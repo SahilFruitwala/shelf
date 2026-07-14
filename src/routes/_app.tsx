@@ -1,0 +1,79 @@
+import { useEffect, useState } from 'react'
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  redirect,
+  useRouter,
+} from '@tanstack/react-router'
+import { LogOut, Moon, Sun } from 'lucide-react'
+
+import { authClient } from '#/lib/auth-client'
+import { getSessionUser } from '#/server/auth'
+
+export const Route = createFileRoute('/_app')({
+  beforeLoad: async ({ location }) => {
+    const user = await getSessionUser()
+    if (!user) {
+      throw redirect({ to: '/login', search: { redirect: location.href } })
+    }
+    return { user }
+  },
+  component: AppLayout,
+})
+
+function ThemeToggle() {
+  const [dark, setDark] = useState(false)
+  useEffect(() => {
+    setDark(document.documentElement.classList.contains('dark'))
+  }, [])
+
+  function toggle() {
+    const next = !dark
+    setDark(next)
+    document.documentElement.classList.toggle('dark', next)
+    localStorage.setItem('shelf-theme', next ? 'dark' : 'light')
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+      className="rounded-full p-2 text-ink-soft hover:bg-card-deep hover:text-ink cursor-pointer"
+    >
+      {dark ? <Sun className="size-4.5" /> : <Moon className="size-4.5" />}
+    </button>
+  )
+}
+
+function AppLayout() {
+  const router = useRouter()
+
+  return (
+    <div className="mx-auto min-h-dvh w-full max-w-5xl px-4 pb-24 sm:px-8">
+      <header className="sticky top-0 z-40 -mx-4 mb-2 flex items-center justify-between border-b border-line bg-bg/80 px-4 py-3 backdrop-blur-md sm:-mx-8 sm:px-8 sm:py-4">
+        <Link to="/" className="font-display text-[22px] font-bold">
+          Shelf
+          <span className="text-accent">.</span>
+        </Link>
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <button
+            onClick={async () => {
+              await authClient.signOut()
+              await router.navigate({
+                to: '/login',
+                search: { redirect: undefined },
+              })
+            }}
+            aria-label="Sign out"
+            className="rounded-full p-2 text-ink-soft hover:bg-card-deep hover:text-ink cursor-pointer"
+          >
+            <LogOut className="size-4.5" />
+          </button>
+        </div>
+      </header>
+      <Outlet />
+    </div>
+  )
+}
