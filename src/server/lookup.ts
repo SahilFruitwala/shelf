@@ -141,10 +141,6 @@ function placeToResult(place: GooglePlace): LookupResult {
   }
 }
 
-// Google Maps links, including maps.app.goo.gl short links.
-const MAPS_URL_RE =
-  /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|maps\.google\.[a-z.]+|(www\.)?google\.[a-z.]+\/maps)/i
-
 async function resolveMapsUrl(
   url: string,
   apiKey: string,
@@ -185,9 +181,21 @@ async function resolveMapsUrl(
       }),
     },
   )
-  if (!searchRes.ok) return []
+  if (!searchRes.ok)
+    throw new Error(`Place lookup failed (${searchRes.status})`)
   const data = (await searchRes.json()) as { places?: Array<GooglePlace> }
   return (data.places ?? []).map(placeToResult)
+}
+
+// Google Maps links, including maps.app.goo.gl short links. Not anchored to the
+// start of the string: iOS share sheets prepend the place name/description
+// (e.g. "Blue Bottle Coffee\nhttps://maps.app.goo.gl/…"), so we pull the first
+// maps URL out of wherever it lands in the pasted text.
+const MAPS_URL_IN_TEXT_RE =
+  /https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps|maps\.google\.[a-z.]+|(?:www\.)?google\.[a-z.]+\/maps)\/\S*/i
+
+function extractMapsUrl(text: string): string | null {
+  return text.match(MAPS_URL_IN_TEXT_RE)?.[0] ?? null
 }
 
 export const searchPlaces = createServerFn({ method: 'GET' })
@@ -195,17 +203,15 @@ export const searchPlaces = createServerFn({ method: 'GET' })
   .handler(async ({ data }): Promise<Array<LookupResult>> => {
     await requireUser()
     const apiKey = process.env.GOOGLE_PLACES_API_KEY
-    if (!apiKey) return []
+    if (!apiKey) throw new Error('Place lookup is not configured')
 
     const query = data.query.trim()
 
-    // A pasted Google Maps link resolves to the exact pinned place.
-    if (MAPS_URL_RE.test(query)) {
-      try {
-        return await resolveMapsUrl(query, apiKey)
-      } catch {
-        return []
-      }
+    // A pasted Google Maps link resolves to the exact pinned place. The URL may
+    // be embedded in share text (iOS prepends the place name), so extract it.
+    const mapsUrl = extractMapsUrl(query)
+    if (mapsUrl) {
+      return await resolveMapsUrl(mapsUrl, apiKey)
     }
 
     const body: { textQuery: string; includedType?: string } = {
@@ -225,7 +231,7 @@ export const searchPlaces = createServerFn({ method: 'GET' })
         body: JSON.stringify(body),
       },
     )
-    if (!res.ok) return []
+    if (!res.ok) throw new Error(`Place search failed (${res.status})`)
     const json = (await res.json()) as { places?: Array<GooglePlace> }
     return (json.places ?? []).slice(0, 8).map(placeToResult)
   })

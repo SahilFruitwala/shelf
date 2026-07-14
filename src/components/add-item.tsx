@@ -116,6 +116,14 @@ function SearchPicker({
         </ul>
       )}
 
+      {results.isError && !results.isFetching && (
+        <p className="py-6 text-center text-sm text-danger">
+          {isPlaces
+            ? "Couldn't reach the places service — try again, or add it manually below"
+            : "Lookup failed — try again, or add it manually below"}
+        </p>
+      )}
+
       {results.data?.length === 0 && !results.isFetching && (
         <p className="py-6 text-center text-sm text-ink-faint">
           Nothing found — add it manually below
