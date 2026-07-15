@@ -13,3 +13,4 @@ __unconfig*
 todos.json
 dev.db
 drizzle/
+.pnpm-store

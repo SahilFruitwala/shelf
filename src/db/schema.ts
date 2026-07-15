@@ -214,8 +214,59 @@ export const itemReactions = sqliteTable(
   ],
 )
 
+// ---------- Encrypted notes (E2EE vault) ----------
+
+export interface VaultKdfParams {
+  memory: number
+  iterations: number
+  parallelism: number
+}
+
+export const userVault = sqliteTable('user_vault', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  wrappedKey: text('wrapped_key').notNull(),
+  wrapIv: text('wrap_iv').notNull(),
+  salt: text('salt').notNull(),
+  kdfParams: text('kdf_params', { mode: 'json' })
+    .$type<VaultKdfParams>()
+    .notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+})
+
+export const encryptedNotes = sqliteTable(
+  'encrypted_notes',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    encryptedTitle: text('encrypted_title').notNull(),
+    titleIv: text('title_iv').notNull(),
+    encryptedContent: text('encrypted_content').notNull(),
+    contentIv: text('content_iv').notNull(),
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    deletedAt: integer('deleted_at', { mode: 'timestamp' }),
+  },
+  (t) => [index('encrypted_notes_user_idx').on(t.userId)],
+)
+
 export type List = typeof lists.$inferSelect
 export type ListMember = typeof listMembers.$inferSelect
 export type Item = typeof items.$inferSelect
 export type Activity = typeof activity.$inferSelect
 export type ItemReaction = typeof itemReactions.$inferSelect
+export type UserVault = typeof userVault.$inferSelect
+export type EncryptedNote = typeof encryptedNotes.$inferSelect
