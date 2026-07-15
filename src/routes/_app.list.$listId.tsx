@@ -11,6 +11,7 @@ import {
   FolderInput,
   Map as MapIcon,
   MapPin,
+  Pencil,
   Plus,
   Trash2,
   UserPlus,
@@ -20,15 +21,15 @@ import {
 import type { Item, ItemStatus, ListType } from '#/db/schema'
 import { LIST_TYPE_CONFIG, CATEGORIES } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
-import { cn, haversineKm, itemCoords } from '#/lib/utils'
+import { cn, existingDayGroups, haversineKm, itemCoords } from '#/lib/utils'
 import { bulkDeleteItems, bulkMoveItems, bulkSetItemStatus } from '#/server/items'
-import { deleteList, getList, getMyLists, leaveList } from '#/server/lists'
+import { deleteList, getList, getMyLists, leaveList, renameList } from '#/server/lists'
 import { AddItemDialog } from '#/components/add-item'
 import { ItemCard } from '#/components/item-card'
 import { ShareDialog } from '#/components/share-dialog'
 import { TripMapPanel } from '#/components/trip-map-panel'
 import type { MapPinItem } from '#/components/trip-map'
-import { Button, ConfirmDialog, Hint, Modal, PageLoading, Select, Spinner } from '#/components/ui'
+import { Button, ConfirmDialog, Field, Hint, Input, Modal, PageLoading, Select, Spinner } from '#/components/ui'
 
 export const Route = createFileRoute('/_app/list/$listId')({
   loader: async ({ context, params }) => {
@@ -62,6 +63,66 @@ const BASE_SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: 'alpha', label: 'A–Z' },
   { key: 'completed', label: 'Recently done' },
 ]
+
+function RenameListDialog({
+  open,
+  onClose,
+  listId,
+  currentName,
+  onRenamed,
+}: {
+  open: boolean
+  onClose: () => void
+  listId: string
+  currentName: string
+  onRenamed: () => Promise<void>
+}) {
+  const [name, setName] = useState(currentName)
+
+  useEffect(() => {
+    if (open) setName(currentName)
+  }, [open, currentName])
+
+  const rename = useMutation({
+    mutationFn: () => renameList({ data: { listId, name } }),
+    onSuccess: async () => {
+      onClose()
+      await onRenamed()
+    },
+  })
+
+  return (
+    <Modal open={open} onClose={onClose} title="Rename shelf">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          rename.mutate()
+        }}
+        className="space-y-4"
+      >
+        <Field label="Name">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoFocus
+          />
+        </Field>
+        {rename.isError && (
+          <p className="text-sm text-danger">{rename.error.message}</p>
+        )}
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={rename.isPending || !name.trim()}
+          className="w-full"
+        >
+          Save name
+        </Button>
+      </form>
+    </Modal>
+  )
+}
 
 function BulkMoveDialog({
   open,
@@ -147,6 +208,8 @@ function ListPage() {
     null,
   )
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
+  const [mapDayFilter, setMapDayFilter] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState(false)
   const isDark = useIsDark()
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -185,6 +248,7 @@ function ListPage() {
   useEffect(() => {
     setTripView(list?.type === 'trip')
     setShowMap(list?.type === 'trip')
+    setMapDayFilter(null)
   }, [list?.type, listId])
 
   useEffect(() => {
@@ -332,6 +396,10 @@ function ListPage() {
     return visible
       .filter((item) => {
         if (item.type !== 'restaurant' && item.type !== 'place') return false
+        if (mapDayFilter) {
+          const group = item.metadata?.group?.trim() || 'Unscheduled'
+          if (group !== mapDayFilter) return false
+        }
         return itemCoords(item.metadata) != null
       })
       .map((item) => {
@@ -346,7 +414,25 @@ function ListPage() {
           group: item.metadata?.group,
         }
       })
-  }, [supportsMap, visible])
+  }, [supportsMap, visible, mapDayFilter])
+
+  const dayGroups = useMemo(
+    () => (list ? existingDayGroups(list.items) : []),
+    [list],
+  )
+
+  const mapDayOptions = useMemo(() => {
+    if (!tripGroups) return []
+    return tripGroups
+      .filter((group) =>
+        group.items.some(
+          (i) =>
+            (i.type === 'restaurant' || i.type === 'place') &&
+            itemCoords(i.metadata),
+        ),
+      )
+      .map((group) => group.key)
+  }, [tripGroups])
 
   const geoPinCount = useMemo(
     () =>
@@ -456,6 +542,16 @@ function ListPage() {
             )}
           >
             {list.name}
+            {list.isOwner && !list.isDefault && (
+              <button
+                type="button"
+                onClick={() => setRenaming(true)}
+                title="Rename shelf"
+                className="ml-2 inline-flex cursor-pointer items-center rounded-full p-1.5 align-middle text-ink-faint transition-colors hover:bg-card-deep hover:text-ink"
+              >
+                <Pencil className="size-4" />
+              </button>
+            )}
           </h1>
           {tripShelf && (
             <p className="mt-1.5 text-[14px] text-ink-soft">
@@ -638,9 +734,40 @@ function ListPage() {
       )}
 
       {supportsMap && showMap && (
-        <p className="mb-3 text-[13px] text-ink-faint">
-          Showing restaurants and places — tap a row to focus it on the map.
-        </p>
+        <div className="mb-3 space-y-2">
+          <p className="text-[13px] text-ink-faint">
+            Showing restaurants and places — tap a row to focus it on the map.
+          </p>
+          {mapDayOptions.length > 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setMapDayFilter(null)}
+                className={cn(
+                  'rounded-full px-3 py-1 text-[12px] font-medium transition-colors cursor-pointer',
+                  mapDayFilter == null
+                    ? 'bg-ink text-bg'
+                    : 'border border-line bg-card-deep text-ink-soft hover:text-ink',
+                )}
+              >
+                All days
+              </button>
+              {mapDayOptions.map((day) => (
+                <button
+                  key={day}
+                  onClick={() => setMapDayFilter(day)}
+                  className={cn(
+                    'rounded-full px-3 py-1 text-[12px] font-medium transition-colors cursor-pointer',
+                    mapDayFilter === day
+                      ? 'bg-ink text-bg'
+                      : 'border border-line bg-card-deep text-ink-soft hover:text-ink',
+                  )}
+                >
+                  {day}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {sort === 'near' && !userPos && !geoError && (
@@ -870,6 +997,17 @@ function ListPage() {
         onClose={() => setAdding(false)}
         listId={listId}
         listType={list.type}
+        existingGroups={dayGroups}
+      />
+      <RenameListDialog
+        open={renaming}
+        onClose={() => setRenaming(false)}
+        listId={listId}
+        currentName={list.name}
+        onRenamed={async () => {
+          await queryClient.invalidateQueries({ queryKey: ['list', listId] })
+          await queryClient.invalidateQueries({ queryKey: ['lists'] })
+        }}
       />
       <ShareDialog
         open={sharing}

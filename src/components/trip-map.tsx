@@ -8,7 +8,7 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
 import type { ItemType } from '#/db/schema'
 import { CATEGORIES } from '#/lib/categories'
-import { cn } from '#/lib/utils'
+import { cn, mapsDirectionsUrl } from '#/lib/utils'
 
 export type MapPinItem = {
   id: string
@@ -189,6 +189,14 @@ export const TripMap = memo(function TripMap({
                   {pin.address && (
                     <p className="text-xs text-zinc-500">{pin.address}</p>
                   )}
+                  <a
+                    href={mapsDirectionsUrl(pin.lat, pin.lng, pin.title)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1.5 inline-block text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    Open in Maps →
+                  </a>
                 </div>
               </Popup>
             </Marker>

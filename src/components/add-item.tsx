@@ -212,6 +212,7 @@ export function AddItemDialog({
   onClose,
   listId,
   listType,
+  existingGroups = [],
 }: {
   open: boolean
   onClose: () => void
@@ -219,6 +220,8 @@ export function AddItemDialog({
    *  for its type unless the user picks a specific one. */
   listId?: string
   listType?: ItemType | ListType
+  /** Day/group labels already on this shelf — for trip itinerary suggestions. */
+  existingGroups?: Array<string>
 }) {
   const queryClient = useQueryClient()
   const fixedType: ItemType | null =
@@ -243,6 +246,7 @@ export function AddItemDialog({
 
   // Global mode offers a shelf picker; list mode is already scoped.
   const globalMode = !listId
+  const showDayField = listType != null && isMultiTypeShelf(listType)
   const { data: myLists } = useQuery({
     queryKey: ['lists'],
     queryFn: () => getMyLists(),
@@ -282,8 +286,11 @@ export function AddItemDialog({
   }
 
   const save = useMutation({
-    mutationFn: () =>
-      addItem({
+    mutationFn: () => {
+      const cleanedMeta = Object.fromEntries(
+        Object.entries(metadata).filter(([, v]) => v.trim() !== ''),
+      )
+      return addItem({
         data: {
           listId: listId ?? (targetListId || undefined),
           type: type!,
@@ -291,9 +298,10 @@ export function AddItemDialog({
           notes: notes || undefined,
           link: link || undefined,
           imageUrl: imageUrl || undefined,
-          metadata: Object.keys(metadata).length ? metadata : undefined,
+          metadata: Object.keys(cleanedMeta).length ? cleanedMeta : undefined,
         },
-      }),
+      })
+    },
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({
         queryKey: ['list', result.listId],
@@ -429,6 +437,28 @@ export function AddItemDialog({
               placeholder="Who recommended it, what to order, why it's on the list…"
             />
           </Field>
+          {showDayField && (
+            <Field
+              label="Day or group"
+              hint="Optional — slot this into your itinerary, e.g. Day 1 or Saturday lunch."
+            >
+              <Input
+                value={metadata.group ?? ''}
+                onChange={(e) =>
+                  setMetadata((m) => ({ ...m, group: e.target.value }))
+                }
+                placeholder="Day 1, Saturday brunch…"
+                list={existingGroups.length > 0 ? 'day-group-suggestions' : undefined}
+              />
+              {existingGroups.length > 0 && (
+                <datalist id="day-group-suggestions">
+                  {existingGroups.map((g) => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
+              )}
+            </Field>
+          )}
           {globalMode && shelfChoices.length > 0 && (
             <Field label="Shelf">
               <Select

@@ -40,7 +40,7 @@ function CoverStrip({
   return (
     <div className="flex h-24 items-center gap-2 overflow-hidden">
       {images.length === 0 ? (
-        <div className="flex h-24 w-full items-center justify-center rounded-lg border border-dashed border-line bg-card-deep/50">
+        <div className="flex h-24 w-full items-center justify-center rounded-lg bg-card-deep/50">
           <Icon className={cn('size-6 opacity-50', config.textClass)} />
         </div>
       ) : (
@@ -50,7 +50,7 @@ function CoverStrip({
             src={src}
             alt=""
             loading="lazy"
-            className="h-24 w-16 rounded-lg border border-line object-cover"
+            className="h-24 w-16 rounded-lg object-cover"
           />
         ))
       )}
@@ -66,13 +66,12 @@ function ListCard({ list }: { list: ListSummary }) {
       to="/list/$listId"
       params={{ listId: list.id }}
       className={cn(
-        'block h-full rounded-(--radius-card) border-l-[3px] p-4 transition-transform hover:translate-y-[-1px]',
-        trip ? 'trip-card' : 'glow-card',
+        'block h-full rounded-(--radius-card) bg-card p-4 transition-transform hover:translate-y-[-1px]',
+        trip && 'trip-card',
       )}
-      style={{ borderLeftColor: `var(--cat-${list.type})` }}
     >
       {trip ? (
-        <div className="relative flex h-24 items-center justify-between overflow-hidden rounded-lg border border-line/80 bg-card-deep/60 px-4">
+        <div className="relative flex h-24 items-center justify-between overflow-hidden rounded-lg bg-card-deep/60 px-4">
           <config.icon className={cn('size-8', config.textClass)} />
           <span className="rounded-full border border-line bg-card/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
             Itinerary

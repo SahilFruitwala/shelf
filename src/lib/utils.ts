@@ -57,6 +57,34 @@ export function itemCoords(
   return { lat, lng }
 }
 
+/** Google Maps directions deep link for a lat/lng pin. */
+export function mapsDirectionsUrl(
+  lat: number,
+  lng: number,
+  label?: string,
+): string {
+  const params = new URLSearchParams({
+    api: '1',
+    destination: `${lat},${lng}`,
+  })
+  if (label?.trim()) params.set('query', label.trim())
+  return `https://www.google.com/maps/dir/?${params}`
+}
+
+/** Collect unique, sorted day/group labels from shelf items. */
+export function existingDayGroups(
+  items: Array<{ metadata?: Record<string, string> | null }>,
+): Array<string> {
+  const groups = new Set<string>()
+  for (const item of items) {
+    const g = item.metadata?.group?.trim()
+    if (g) groups.add(g)
+  }
+  return [...groups].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' }),
+  )
+}
+
 export function timeAgo(date: Date | string | number): string {
   let delta = (new Date(date).getTime() - Date.now()) / 1000
   if (delta > -30) return 'just now'

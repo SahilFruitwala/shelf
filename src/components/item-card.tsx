@@ -15,7 +15,7 @@ import {
 
 import type { Item, ItemType } from '#/db/schema'
 import { CATEGORIES, statusLabel } from '#/lib/categories'
-import { cn, formatDistance } from '#/lib/utils'
+import { cn, formatDistance, itemCoords, mapsDirectionsUrl } from '#/lib/utils'
 import {
   deleteItem,
   moveItem,
@@ -246,10 +246,12 @@ function ItemMenu({
   onEdit,
   onMove,
   onRemove,
+  directionsUrl,
 }: {
   onEdit: () => void
   onMove: () => void
   onRemove: () => void
+  directionsUrl?: string
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -298,6 +300,18 @@ function ItemMenu({
             <FolderInput className="size-3.5" />
             Move to shelf
           </button>
+          {directionsUrl && (
+            <a
+              href={directionsUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setOpen(false)}
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-ink-soft hover:bg-card-deep hover:text-ink"
+            >
+              <MapPin className="size-3.5" />
+              Open in Maps
+            </a>
+          )}
           <button
             onClick={() => {
               setOpen(false)
@@ -388,6 +402,10 @@ export function ItemCard({
   const done = item.status === 'done'
   const abandoned = item.status === 'abandoned'
   const groupLabel = item.metadata?.group?.trim()
+  const coords = itemCoords(item.metadata)
+  const directionsUrl = coords
+    ? mapsDirectionsUrl(coords.lat, coords.lng, item.title)
+    : undefined
   const iReacted = reactions?.some((r) => r.userId === myUserId) ?? false
   const otherReactors =
     reactions?.filter((r) => r.userId !== myUserId) ?? []
@@ -489,6 +507,7 @@ export function ItemCard({
               onEdit={() => setEditing(true)}
               onMove={() => setMoving(true)}
               onRemove={() => setConfirmRemove(true)}
+              directionsUrl={directionsUrl}
             />
           </div>
         </article>
@@ -728,6 +747,7 @@ export function ItemCard({
               onEdit={() => setEditing(true)}
               onMove={() => setMoving(true)}
               onRemove={() => setConfirmRemove(true)}
+              directionsUrl={directionsUrl}
             />
           </div>
           <div className="flex shrink-0 flex-col items-end gap-0.5">
