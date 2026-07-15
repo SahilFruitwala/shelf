@@ -37,7 +37,7 @@ function PublicItemCard({ item }: { item: PublicItem }) {
   const Icon = config.icon
   const done = item.status === 'done'
   const coords = itemCoords(item.metadata)
-  const groupLabel = item.metadata?.group?.trim()
+  const groupLabel = item.metadata?.group.trim()
   const subtitle = [
     item.metadata?.year,
     item.metadata?.author,
@@ -136,14 +136,14 @@ function PublicShelfContent({ list }: { list: PublicList }) {
   const isDark = useIsDark()
   const tripShelf = isTripShelf(list.type)
   const multiShelf = isMultiTypeShelf(list.type)
-  const hasGroups = list.items.some((i) => i.metadata?.group?.trim())
+  const hasGroups = list.items.some((i) => i.metadata?.group.trim())
   const showItinerary = tripShelf || (multiShelf && hasGroups)
 
   const tripGroups = useMemo(() => {
     if (!showItinerary) return null
     const groups = new Map<string, Array<PublicItem>>()
     for (const item of list.items) {
-      const key = item.metadata?.group?.trim() || 'Unscheduled'
+      const key = item.metadata?.group.trim() || 'Unscheduled'
       const arr = groups.get(key) ?? []
       arr.push(item)
       groups.set(key, arr)

@@ -78,13 +78,11 @@ export const addItem = createServerFn({ method: 'POST' })
 
 /** Title matches already on this shelf — for duplicate warnings at add-time. */
 export const findDuplicatesOnShelf = createServerFn({ method: 'GET' })
-  .validator(
-    (data: { listId?: string; type: ItemType; title: string }) => ({
-      listId: data.listId,
-      type: data.type,
-      title: data.title.trim(),
-    }),
-  )
+  .validator((data: { listId?: string; type: ItemType; title: string }) => ({
+    listId: data.listId,
+    type: data.type,
+    title: data.title.trim(),
+  }))
   .handler(async ({ data }) => {
     const db = await getDb()
     const me = await requireUser()
@@ -104,9 +102,7 @@ export const findDuplicatesOnShelf = createServerFn({ method: 'GET' })
       .from(items)
       .where(eq(items.listId, listId))
 
-    return shelfItems.filter(
-      (i) => normalizeTitle(i.title) === normalized,
-    )
+    return shelfItems.filter((i) => normalizeTitle(i.title) === normalized)
   })
 
 export const updateItem = createServerFn({ method: 'POST' })
@@ -164,7 +160,11 @@ export const moveItem = createServerFn({ method: 'POST' })
       where: eq(lists.id, data.targetListId),
     })
     if (!target) throw new Error('Shelf not found')
-    if (target.type !== 'mixed' && target.type !== 'trip' && target.type !== item.type)
+    if (
+      target.type !== 'mixed' &&
+      target.type !== 'trip' &&
+      target.type !== item.type
+    )
       throw new Error(`This shelf only holds ${target.type}s`)
 
     await db
@@ -190,7 +190,7 @@ export const bulkSetItemStatus = createServerFn({ method: 'POST' })
 
     const listIds = new Set(rows.map((r) => r.listId))
     if (listIds.size !== 1) throw new Error('Items must be on the same shelf')
-    await requireMembership(rows[0]!.listId, me.id)
+    await requireMembership(rows[0].listId, me.id)
 
     await db
       .update(items)
@@ -202,9 +202,7 @@ export const bulkSetItemStatus = createServerFn({ method: 'POST' })
   })
 
 export const bulkMoveItems = createServerFn({ method: 'POST' })
-  .validator(
-    (data: { itemIds: Array<string>; targetListId: string }) => data,
-  )
+  .validator((data: { itemIds: Array<string>; targetListId: string }) => data)
   .handler(async ({ data }) => {
     const db = await getDb()
     const me = await requireUser()
@@ -216,7 +214,7 @@ export const bulkMoveItems = createServerFn({ method: 'POST' })
       .where(inArray(items.id, data.itemIds))
     if (rows.length === 0) return
 
-    const sourceListId = rows[0]!.listId
+    const sourceListId = rows[0].listId
     if (!rows.every((r) => r.listId === sourceListId))
       throw new Error('Items must be on the same shelf')
     await requireMembership(sourceListId, me.id)
@@ -228,7 +226,11 @@ export const bulkMoveItems = createServerFn({ method: 'POST' })
     if (!target) throw new Error('Shelf not found')
 
     for (const item of rows) {
-      if (target.type !== 'mixed' && target.type !== 'trip' && target.type !== item.type)
+      if (
+        target.type !== 'mixed' &&
+        target.type !== 'trip' &&
+        target.type !== item.type
+      )
         throw new Error(`"${item.title}" doesn't fit on a ${target.type} shelf`)
     }
 
@@ -245,15 +247,12 @@ export const bulkDeleteItems = createServerFn({ method: 'POST' })
     const me = await requireUser()
     if (itemIds.length === 0) return
 
-    const rows = await db
-      .select()
-      .from(items)
-      .where(inArray(items.id, itemIds))
+    const rows = await db.select().from(items).where(inArray(items.id, itemIds))
     if (rows.length === 0) return
 
     const listIds = new Set(rows.map((r) => r.listId))
     if (listIds.size !== 1) throw new Error('Items must be on the same shelf')
-    await requireMembership(rows[0]!.listId, me.id)
+    await requireMembership(rows[0].listId, me.id)
 
     await db.delete(items).where(inArray(items.id, itemIds))
   })

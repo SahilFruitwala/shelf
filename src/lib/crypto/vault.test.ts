@@ -27,6 +27,17 @@ describe('vault crypto', () => {
     expect(plain).toBe('# Hello\n\nWorld')
   })
 
+  it('rejects tampered ciphertext', async () => {
+    const { masterKey } = await createVault('test-passphrase-123')
+    const encrypted = await encryptField(masterKey, 'do not change')
+    const replacement = encrypted.ciphertext[0] === 'A' ? 'B' : 'A'
+    const tampered = replacement + encrypted.ciphertext.slice(1)
+
+    await expect(
+      decryptField(masterKey, tampered, encrypted.iv),
+    ).rejects.toThrow()
+  })
+
   it('unlocks vault with correct passphrase', async () => {
     const passphrase = 'my-secure-vault-pass'
     const setup = await createVault(passphrase)

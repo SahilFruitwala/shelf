@@ -106,7 +106,7 @@ function FitBounds({
     if (focus) return
     if (pins.length === 0) return
     if (pins.length === 1) {
-      map.setView([pins[0]!.lat, pins[0]!.lng], 14)
+      map.setView([pins[0].lat, pins[0].lng], 14)
       return
     }
     const bounds = L.latLngBounds(

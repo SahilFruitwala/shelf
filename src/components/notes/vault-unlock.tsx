@@ -50,11 +50,7 @@ export function VaultUnlock() {
           />
         </Field>
         {error && <p className="text-sm text-danger">{error}</p>}
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={!passphrase || busy}
-        >
+        <Button type="submit" variant="primary" disabled={!passphrase || busy}>
           {busy ? 'Unlocking…' : 'Unlock vault'}
         </Button>
       </form>

@@ -133,9 +133,10 @@ function placeToResult(place: GooglePlace): LookupResult {
     metadata.price = PRICE_LEVELS[place.priceLevel]
   if (place.primaryTypeDisplayName?.text)
     metadata.kind = place.primaryTypeDisplayName.text
-  if (place.location?.latitude != null && place.location?.longitude != null) {
-    metadata.lat = String(place.location.latitude)
-    metadata.lng = String(place.location.longitude)
+  const location = place.location
+  if (location?.latitude != null && location.longitude != null) {
+    metadata.lat = String(location.latitude)
+    metadata.lng = String(location.longitude)
   }
   return {
     title: place.displayName?.text ?? 'Unnamed place',
@@ -192,9 +193,9 @@ async function resolveMapsUrl(
   return (data.places ?? []).map((place) => {
     const result = placeToResult(place)
     // Fall back to the pin we pulled from the URL if the API omits location.
-    if (!result.metadata.lat && coords) {
-      result.metadata.lat = coords[1]!
-      result.metadata.lng = coords[2]!
+    if (!('lat' in result.metadata)) {
+      result.metadata.lat = coords[1]
+      result.metadata.lng = coords[2]
     }
     return result
   })

@@ -1,8 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Link2, MapPin, PenLine, Search } from 'lucide-react'
 
-import { ITEM_TYPES, type ItemStatus, type ItemType, type ListType } from '#/db/schema'
+import { ITEM_TYPES } from '#/db/schema'
+import type { ItemStatus, ItemType, ListType } from '#/db/schema'
 import { CATEGORIES, statusLabel } from '#/lib/categories'
 import { isMultiTypeShelf } from '#/lib/list-types'
 import { cn } from '#/lib/utils'
@@ -15,7 +17,15 @@ import {
   searchTmdb,
 } from '#/server/lookup'
 import type { LookupResult } from '#/server/lookup'
-import { Button, Field, Input, Modal, Select, Spinner, Textarea } from '#/components/ui'
+import {
+  Button,
+  Field,
+  Input,
+  Modal,
+  Select,
+  Spinner,
+  Textarea,
+} from '#/components/ui'
 
 function useDebounced(value: string, ms: number) {
   const [debounced, setDebounced] = useState(value)
@@ -225,9 +235,7 @@ export function AddItemDialog({
 }) {
   const queryClient = useQueryClient()
   const fixedType: ItemType | null =
-    listType && !isMultiTypeShelf(listType)
-      ? (listType as ItemType)
-      : null
+    listType && !isMultiTypeShelf(listType) ? (listType as ItemType) : null
   const [type, setType] = useState<ItemType | null>(fixedType)
   const [manual, setManual] = useState(false)
   const [prefilled, setPrefilled] = useState(false)
@@ -253,9 +261,7 @@ export function AddItemDialog({
     enabled: globalMode && open,
   })
   const shelfChoices = (myLists ?? []).filter(
-    (l) =>
-      !l.isDefault &&
-      (l.type === type || isMultiTypeShelf(l.type)),
+    (l) => !l.isDefault && (l.type === type || isMultiTypeShelf(l.type)),
   )
 
   function reset() {
@@ -443,12 +449,16 @@ export function AddItemDialog({
               hint="Optional — slot this into your itinerary, e.g. Day 1 or Saturday lunch."
             >
               <Input
-                value={metadata.group ?? ''}
+                value={metadata.group}
                 onChange={(e) =>
                   setMetadata((m) => ({ ...m, group: e.target.value }))
                 }
                 placeholder="Day 1, Saturday brunch…"
-                list={existingGroups.length > 0 ? 'day-group-suggestions' : undefined}
+                list={
+                  existingGroups.length > 0
+                    ? 'day-group-suggestions'
+                    : undefined
+                }
               />
               {existingGroups.length > 0 && (
                 <datalist id="day-group-suggestions">
@@ -504,7 +514,7 @@ export function AddItemDialog({
               <ul className="mt-1.5 space-y-0.5 text-ink-soft">
                 {duplicateMatches.map((m) => (
                   <li key={m.id}>
-                    “{m.title}” · {statusLabel(type!, m.status as ItemStatus)}
+                    “{m.title}” · {statusLabel(type, m.status as ItemStatus)}
                   </li>
                 ))}
               </ul>

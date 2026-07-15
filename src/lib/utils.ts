@@ -50,7 +50,7 @@ export function formatDistance(km: number): string {
 export function itemCoords(
   metadata?: Record<string, string> | null,
 ): { lat: number; lng: number } | null {
-  if (!metadata?.lat || !metadata?.lng) return null
+  if (!metadata?.lat || !metadata.lng) return null
   const lat = Number(metadata.lat)
   const lng = Number(metadata.lng)
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
@@ -77,7 +77,7 @@ export function existingDayGroups(
 ): Array<string> {
   const groups = new Set<string>()
   for (const item of items) {
-    const g = item.metadata?.group?.trim()
+    const g = item.metadata?.group.trim()
     if (g) groups.add(g)
   }
   return [...groups].sort((a, b) =>

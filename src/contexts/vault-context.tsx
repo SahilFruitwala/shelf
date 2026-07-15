@@ -6,14 +6,10 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type { VaultRecord } from '#/lib/crypto/types'
-import {
-  getVaultRecord,
-  getVaultStatus,
-  setupVault,
-} from '#/server/notes'
+import { getVaultRecord, getVaultStatus, setupVault } from '#/server/notes'
 
 export type VaultState = 'loading' | 'noVault' | 'locked' | 'unlocked'
 
@@ -29,15 +25,19 @@ interface VaultContextValue {
 
 const VaultContext = createContext<VaultContextValue | null>(null)
 
+export function vaultStatusQueryOptions() {
+  return queryOptions({
+    queryKey: ['vault-status'],
+    queryFn: () => getVaultStatus(),
+  })
+}
+
 export function VaultProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const [masterKey, setMasterKey] = useState<CryptoKey | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const statusQuery = useQuery({
-    queryKey: ['vault-status'],
-    queryFn: () => getVaultStatus(),
-  })
+  const statusQuery = useQuery(vaultStatusQueryOptions())
 
   const state: VaultState = useMemo(() => {
     if (statusQuery.isLoading) return 'loading'
@@ -54,18 +54,25 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const setup = useCallback(
     async (passphrase: string) => {
       setError(null)
-      const { createVault } = await import('#/lib/crypto/vault-crypto')
-      const result = await createVault(passphrase)
-      await setupVault({
-        data: {
-          wrappedKey: result.wrappedKey,
-          wrapIv: result.wrapIv,
-          salt: result.salt,
-          kdfParams: result.kdfParams,
-        },
-      })
-      setMasterKey(result.masterKey)
-      await queryClient.invalidateQueries({ queryKey: ['vault-status'] })
+      try {
+        const { createVault } = await import('#/lib/crypto/vault-crypto')
+        const result = await createVault(passphrase)
+        await setupVault({
+          data: {
+            wrappedKey: result.wrappedKey,
+            wrapIv: result.wrapIv,
+            salt: result.salt,
+            kdfParams: result.kdfParams,
+          },
+        })
+        setMasterKey(result.masterKey)
+        await queryClient.invalidateQueries({ queryKey: ['vault-status'] })
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : 'Could not create vault'
+        setError(message)
+        throw e
+      }
     },
     [queryClient],
   )
@@ -78,8 +85,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const key = await unlockVault(passphrase, record)
       setMasterKey(key)
     } catch (e) {
-      const message =
-        e instanceof Error ? e.message : 'Could not unlock vault'
+      const message = e instanceof Error ? e.message : 'Could not unlock vault'
       setError(message)
       throw e
     }
@@ -89,6 +95,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     if (state === 'noVault') setMasterKey(null)
   }, [state])
 
+  const clearError = useCallback(() => setError(null), [])
+
   const value = useMemo(
     () => ({
       state,
@@ -97,14 +105,12 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       unlock,
       lock,
       error,
-      clearError: () => setError(null),
+      clearError,
     }),
-    [state, masterKey, setup, unlock, lock, error],
+    [state, masterKey, setup, unlock, lock, error, clearError],
   )
 
-  return (
-    <VaultContext.Provider value={value}>{children}</VaultContext.Provider>
-  )
+  return <VaultContext.Provider value={value}>{children}</VaultContext.Provider>
 }
 
 export function useVault() {

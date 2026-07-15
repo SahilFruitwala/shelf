@@ -22,14 +22,34 @@ import type { Item, ItemStatus, ListType } from '#/db/schema'
 import { LIST_TYPE_CONFIG, CATEGORIES } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
 import { cn, existingDayGroups, haversineKm, itemCoords } from '#/lib/utils'
-import { bulkDeleteItems, bulkMoveItems, bulkSetItemStatus } from '#/server/items'
-import { deleteList, getList, getMyLists, leaveList, renameList } from '#/server/lists'
+import {
+  bulkDeleteItems,
+  bulkMoveItems,
+  bulkSetItemStatus,
+} from '#/server/items'
+import {
+  deleteList,
+  getList,
+  getMyLists,
+  leaveList,
+  renameList,
+} from '#/server/lists'
 import { AddItemDialog } from '#/components/add-item'
 import { ItemCard } from '#/components/item-card'
 import { ShareDialog } from '#/components/share-dialog'
 import { TripMapPanel } from '#/components/trip-map-panel'
 import type { MapPinItem } from '#/components/trip-map'
-import { Button, ConfirmDialog, Field, Hint, Input, Modal, PageLoading, Select, Spinner } from '#/components/ui'
+import {
+  Button,
+  ConfirmDialog,
+  Field,
+  Hint,
+  Input,
+  Modal,
+  PageLoading,
+  Select,
+  Spinner,
+} from '#/components/ui'
 
 export const Route = createFileRoute('/_app/list/$listId')({
   loader: async ({ context, params }) => {
@@ -242,7 +262,7 @@ function ListPage() {
   }, [isGeoShelf, hasCoords])
   const unscheduledCount = useMemo(() => {
     if (!list || !isMultiTypeShelf(list.type)) return 0
-    return list.items.filter((i) => !i.metadata?.group?.trim()).length
+    return list.items.filter((i) => !i.metadata?.group.trim()).length
   }, [list])
 
   useEffect(() => {
@@ -253,7 +273,7 @@ function ListPage() {
 
   useEffect(() => {
     if (sort !== 'near') return
-    if (!navigator.geolocation) {
+    if (!('geolocation' in navigator)) {
       setGeoError('Geolocation is not available in this browser')
       return
     }
@@ -375,10 +395,10 @@ function ListPage() {
   }, [filtered, sort, distances])
 
   const tripGroups = useMemo(() => {
-    if (!showItinerary || !multiShelf) return null
+    if (!showItinerary) return null
     const groups = new Map<string, Array<Item>>()
     for (const item of visible) {
-      const key = item.metadata?.group?.trim() || 'Unscheduled'
+      const key = item.metadata?.group.trim() || 'Unscheduled'
       const arr = groups.get(key) ?? []
       arr.push(item)
       groups.set(key, arr)
@@ -389,7 +409,7 @@ function ListPage() {
       return a.localeCompare(b, undefined, { sensitivity: 'base' })
     })
     return keys.map((key) => ({ key, items: groups.get(key)! }))
-  }, [showItinerary, multiShelf, visible])
+  }, [showItinerary, visible])
 
   const mapPins = useMemo((): Array<MapPinItem> => {
     if (!supportsMap) return []
@@ -397,7 +417,7 @@ function ListPage() {
       .filter((item) => {
         if (item.type !== 'restaurant' && item.type !== 'place') return false
         if (mapDayFilter) {
-          const group = item.metadata?.group?.trim() || 'Unscheduled'
+          const group = item.metadata?.group.trim() || 'Unscheduled'
           if (group !== mapDayFilter) return false
         }
         return itemCoords(item.metadata) != null
@@ -416,10 +436,7 @@ function ListPage() {
       })
   }, [supportsMap, visible, mapDayFilter])
 
-  const dayGroups = useMemo(
-    () => (list ? existingDayGroups(list.items) : []),
-    [list],
-  )
+  const dayGroups = useMemo(() => existingDayGroups(list.items), [list.items])
 
   const mapDayOptions = useMemo(() => {
     if (!tripGroups) return []
@@ -447,9 +464,7 @@ function ListPage() {
   const mapMode = supportsMap && showMap
   const mapListItems = useMemo(() => {
     if (!mapMode) return visible
-    return visible.filter(
-      (i) => i.type === 'restaurant' || i.type === 'place',
-    )
+    return visible.filter((i) => i.type === 'restaurant' || i.type === 'place')
   }, [mapMode, visible])
   const showReactions = list.members.length > 1
   const selectedIds = [...selected]
@@ -702,8 +717,9 @@ function ListPage() {
 
       {showReactions && list.items.length > 0 && (
         <Hint dismissKey="hint-reactions" className="mb-4">
-          On a shared shelf, tap <strong className="font-medium text-ink">Nice pick</strong>{' '}
-          on someone else&apos;s addition — a quick nod, not a rating.
+          On a shared shelf, tap{' '}
+          <strong className="font-medium text-ink">Nice pick</strong> on someone
+          else&apos;s addition — a quick nod, not a rating.
         </Hint>
       )}
 
@@ -715,12 +731,13 @@ function ListPage() {
         </Hint>
       )}
 
-      {showItinerary && multiShelf && (
+      {showItinerary && (
         <Hint dismissKey="hint-trip" className="mb-4">
           {unscheduledCount > 0 ? (
             <>
-              Assign a <strong className="font-medium text-ink">day or group</strong> on each
-              item (⋯ → Edit details) to build your itinerary.{' '}
+              Assign a{' '}
+              <strong className="font-medium text-ink">day or group</strong> on
+              each item (⋯ → Edit details) to build your itinerary.{' '}
               <span className="text-ink-faint">
                 {unscheduledCount} still unscheduled.
               </span>
@@ -787,16 +804,16 @@ function ListPage() {
 
       {sort === 'near' && userPos && (
         <Hint dismissKey="hint-near" className="mb-4">
-          Sorted by distance from you. Only places added via search or Maps links
-          have locations ({coordsCount} of {list.items.length}).
+          Sorted by distance from you. Only places added via search or Maps
+          links have locations ({coordsCount} of {list.items.length}).
         </Hint>
       )}
 
       {isGeoShelf && !hasCoords && list.items.length > 0 && sort !== 'near' && (
         <Hint dismissKey="hint-near-missing" className="mb-4">
-          Want <strong className="font-medium text-ink">nearest first</strong> sorting?
-          Add restaurants via search or paste a Google Maps link so we can save
-          their location.
+          Want <strong className="font-medium text-ink">nearest first</strong>{' '}
+          sorting? Add restaurants via search or paste a Google Maps link so we
+          can save their location.
         </Hint>
       )}
 
@@ -851,7 +868,8 @@ function ListPage() {
                     </h2>
                     {group.key === 'Unscheduled' && (
                       <p className="mb-3 text-[13px] text-ink-faint">
-                        Open ⋯ → Edit details and add a day or group to slot these in.
+                        Open ⋯ → Edit details and add a day or group to slot
+                        these in.
                       </p>
                     )}
                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -872,9 +890,7 @@ function ListPage() {
                       <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-ink-faint">
                         {group.key}
                       </h2>
-                      <div className="space-y-1.5">
-                        {items.map(renderItem)}
-                      </div>
+                      <div className="space-y-1.5">{items.map(renderItem)}</div>
                     </section>
                   )
                 })}
@@ -892,11 +908,7 @@ function ListPage() {
           </div>
           {mapMode && (
             <div className="sticky top-4 min-w-0">
-              <TripMapPanel
-                pins={mapPins}
-                focus={mapFocus}
-                dark={isDark}
-              />
+              <TripMapPanel pins={mapPins} focus={mapFocus} dark={isDark} />
             </div>
           )}
         </div>

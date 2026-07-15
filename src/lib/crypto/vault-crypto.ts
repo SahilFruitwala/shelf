@@ -7,6 +7,7 @@ import type {
   VaultSetupPayload,
 } from './types'
 import { DEFAULT_KDF_PARAMS } from './types'
+import { validateKdfParams, validateVaultSetupPayload } from './validation'
 
 function randomBytes(length: number): Uint8Array<ArrayBuffer> {
   return crypto.getRandomValues(new Uint8Array(length))
@@ -60,7 +61,9 @@ async function deriveWrappingKey(
   )
 }
 
-async function importMasterKey(raw: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+async function importMasterKey(
+  raw: Uint8Array<ArrayBuffer>,
+): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'raw',
     toArrayBuffer(raw),
@@ -113,6 +116,7 @@ export async function createVault(
   passphrase: string,
   kdfParams: VaultKdfParams = DEFAULT_KDF_PARAMS,
 ): Promise<CreateVaultResult> {
+  validateKdfParams(kdfParams)
   const salt = randomBytes(16)
   const masterKeyRaw = randomBytes(32)
   const wrappingKey = await deriveWrappingKey(passphrase, salt, kdfParams)
@@ -131,6 +135,7 @@ export async function unlockVault(
   passphrase: string,
   record: VaultRecord,
 ): Promise<CryptoKey> {
+  validateVaultSetupPayload(record)
   const salt = copyBytes(fromBase64(record.salt))
   const wrappingKey = await deriveWrappingKey(
     passphrase,

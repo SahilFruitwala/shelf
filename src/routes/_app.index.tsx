@@ -455,7 +455,9 @@ function HomePage() {
 
           {lists.some((l) => !l.isDefault) && (
             <>
-              <SectionLabel className="mt-10">Custom & shared shelves</SectionLabel>
+              <SectionLabel className="mt-10">
+                Custom & shared shelves
+              </SectionLabel>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {lists
                   .filter((l) => !l.isDefault)

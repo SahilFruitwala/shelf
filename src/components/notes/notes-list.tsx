@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Lock, Search } from 'lucide-react'
@@ -21,6 +21,7 @@ export function NotesList() {
   const [decrypted, setDecrypted] = useState<DecryptedNoteSummary[]>([])
   const [decrypting, setDecrypting] = useState(false)
   const [decryptError, setDecryptError] = useState<string | null>(null)
+  const decryptRunRef = useRef<symbol | null>(null)
 
   const notesQuery = useQuery({
     queryKey: ['notes'],
@@ -43,7 +44,8 @@ export function NotesList() {
     }
 
     setDecrypting(true)
-    let cancelled = false
+    const run = Symbol('decrypt-note-list')
+    decryptRunRef.current = run
     ;(async () => {
       try {
         const { decryptField } = await import('#/lib/crypto/vault-crypto')
@@ -61,21 +63,21 @@ export function NotesList() {
             }
           }),
         )
-        if (!cancelled) {
+        if (decryptRunRef.current === run) {
           setDecrypted(rows)
           setDecryptError(null)
         }
       } catch {
-        if (!cancelled) {
+        if (decryptRunRef.current === run) {
           setDecryptError('Could not decrypt notes. Try unlocking again.')
         }
       } finally {
-        if (!cancelled) setDecrypting(false)
+        if (decryptRunRef.current === run) setDecrypting(false)
       }
     })()
 
     return () => {
-      cancelled = true
+      if (decryptRunRef.current === run) decryptRunRef.current = null
     }
   }, [masterKey, notesQuery.data])
 
@@ -120,28 +122,29 @@ export function NotesList() {
       {notesQuery.isLoading && (
         <p className="text-sm text-ink-soft">Loading encrypted notes…</p>
       )}
-      {decrypting && (
-        <p className="text-sm text-ink-soft">Decrypting notes…</p>
+      {notesQuery.isError && (
+        <p className="text-sm text-danger">Could not load notes.</p>
       )}
-      {decryptError && (
-        <p className="text-sm text-danger">{decryptError}</p>
-      )}
+      {decrypting && <p className="text-sm text-ink-soft">Decrypting notes…</p>}
+      {decryptError && <p className="text-sm text-danger">{decryptError}</p>}
 
       {!notesQuery.isLoading &&
+        !notesQuery.isError &&
         !decrypting &&
+        !decryptError &&
         filtered.length === 0 && (
-        <div className="rounded-(--radius-card) border border-dashed border-line bg-card/50 px-6 py-12 text-center">
-          <p className="mb-1 font-medium text-ink">
-            {search ? 'No matching notes' : 'No notes yet'}
-          </p>
-          <p className="mb-4 text-sm text-ink-soft">
-            {search
-              ? 'Try a different search term.'
-              : 'Create your first encrypted note — only you hold the key.'}
-          </p>
-          {!search && <CreateNoteButton />}
-        </div>
-      )}
+          <div className="rounded-(--radius-card) border border-dashed border-line bg-card/50 px-6 py-12 text-center">
+            <p className="mb-1 font-medium text-ink">
+              {search ? 'No matching notes' : 'No notes yet'}
+            </p>
+            <p className="mb-4 text-sm text-ink-soft">
+              {search
+                ? 'Try a different search term.'
+                : 'Create your first encrypted note — only you hold the key.'}
+            </p>
+            {!search && <CreateNoteButton />}
+          </div>
+        )}
 
       <ul className="space-y-2">
         {filtered.map((note) => (

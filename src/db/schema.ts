@@ -7,6 +7,8 @@ import {
 } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
+import type { VaultKdfParams } from '#/lib/crypto/types'
+
 // ---------- better-auth tables ----------
 
 export const user = sqliteTable('user', {
@@ -215,12 +217,6 @@ export const itemReactions = sqliteTable(
 )
 
 // ---------- Encrypted notes (E2EE vault) ----------
-
-export interface VaultKdfParams {
-  memory: number
-  iterations: number
-  parallelism: number
-}
 
 export const userVault = sqliteTable('user_vault', {
   userId: text('user_id')

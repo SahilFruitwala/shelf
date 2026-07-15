@@ -14,16 +14,13 @@ export function CreateNoteButton() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!masterKey) throw new Error('Vault locked')
-      const { encryptField } = await import('#/lib/crypto/vault-crypto')
-      const title = await encryptField(masterKey, 'Untitled')
-      const content = await encryptField(masterKey, '')
+      const { encryptNoteFields } = await import('#/lib/crypto/note-crypto')
+      const encrypted = await encryptNoteFields(masterKey, {
+        title: 'Untitled',
+        content: '',
+      })
       return createNote({
-        data: {
-          encryptedTitle: title.ciphertext,
-          titleIv: title.iv,
-          encryptedContent: content.ciphertext,
-          contentIv: content.iv,
-        },
+        data: encrypted,
       })
     },
     onSuccess: async (result) => {

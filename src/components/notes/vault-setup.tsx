@@ -11,10 +11,7 @@ export function VaultSetup() {
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  const canSubmit =
-    passphrase.length >= 8 &&
-    passphrase === confirm &&
-    !busy
+  const canSubmit = passphrase.length >= 8 && passphrase === confirm && !busy
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

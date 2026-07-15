@@ -16,16 +16,18 @@ import {
 import type { Item, ItemType } from '#/db/schema'
 import { CATEGORIES, statusLabel } from '#/lib/categories'
 import { cn, formatDistance, itemCoords, mapsDirectionsUrl } from '#/lib/utils'
-import {
-  deleteItem,
-  moveItem,
-  setItemStatus,
-  updateItem,
-} from '#/server/items'
+import { deleteItem, moveItem, setItemStatus, updateItem } from '#/server/items'
 import { getMyLists } from '#/server/lists'
 import { isMultiTypeShelf } from '#/lib/list-types'
 import { toggleReaction } from '#/server/reactions'
-import { Button, ConfirmDialog, Field, Input, Modal, Textarea } from '#/components/ui'
+import {
+  Button,
+  ConfirmDialog,
+  Field,
+  Input,
+  Modal,
+  Textarea,
+} from '#/components/ui'
 
 /** Type-specific metadata fields exposed in the edit dialog. */
 const META_FIELDS: Record<ItemType, Array<{ key: string; label: string }>> = {
@@ -129,7 +131,7 @@ function EditItemDialog({
             hint="For trip shelves — e.g. “Day 1”, “Saturday lunch”. Shows in itinerary view."
           >
             <Input
-              value={meta.group ?? ''}
+              value={meta.group}
               onChange={(e) =>
                 setMeta((m) => ({ ...m, group: e.target.value }))
               }
@@ -259,8 +261,7 @@ function ItemMenu({
   useEffect(() => {
     if (!open) return
     function onDocClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false)
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
@@ -401,14 +402,13 @@ export function ItemCard({
 
   const done = item.status === 'done'
   const abandoned = item.status === 'abandoned'
-  const groupLabel = item.metadata?.group?.trim()
+  const groupLabel = item.metadata?.group.trim()
   const coords = itemCoords(item.metadata)
   const directionsUrl = coords
     ? mapsDirectionsUrl(coords.lat, coords.lng, item.title)
     : undefined
   const iReacted = reactions?.some((r) => r.userId === myUserId) ?? false
-  const otherReactors =
-    reactions?.filter((r) => r.userId !== myUserId) ?? []
+  const otherReactors = reactions?.filter((r) => r.userId !== myUserId) ?? []
   const subtitle = [
     item.metadata?.year,
     item.metadata?.author,
@@ -496,7 +496,9 @@ export function ItemCard({
               )}
             </div>
             {meta && (
-              <p className="mt-0.5 truncate text-[12px] text-ink-faint">{meta}</p>
+              <p className="mt-0.5 truncate text-[12px] text-ink-faint">
+                {meta}
+              </p>
             )}
           </div>
           <div
@@ -752,9 +754,12 @@ export function ItemCard({
           </div>
           <div className="flex shrink-0 flex-col items-end gap-0.5">
             {otherReactors.length > 0 && (
-              <span className="text-[12px] text-ink-faint" title="Teammates who liked this pick">
+              <span
+                className="text-[12px] text-ink-faint"
+                title="Teammates who liked this pick"
+              >
                 {otherReactors.length === 1
-                  ? `${otherReactors[0]!.name.split(' ')[0]} liked this`
+                  ? `${otherReactors[0].name.split(' ')[0]} liked this`
                   : `${otherReactors.length} liked this`}
               </span>
             )}

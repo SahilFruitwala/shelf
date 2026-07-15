@@ -80,7 +80,9 @@ export function Field({
         {label}
       </span>
       {hint && (
-        <p className="mb-2 text-[13px] leading-relaxed text-ink-faint">{hint}</p>
+        <p className="mb-2 text-[13px] leading-relaxed text-ink-faint">
+          {hint}
+        </p>
       )}
       {children}
     </label>
