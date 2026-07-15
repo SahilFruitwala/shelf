@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { forwardRef, useEffect, useRef, useState } from 'react'
+import { ChevronDown, X } from 'lucide-react'
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
+  SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react'
 import { cn } from '#/lib/utils'
@@ -33,12 +34,13 @@ export function Button({
   )
 }
 
-export function Input({
-  className,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
+export const Input = forwardRef<
+  HTMLInputElement,
+  InputHTMLAttributes<HTMLInputElement>
+>(function Input({ className, ...props }, ref) {
   return (
     <input
+      ref={ref}
       className={cn(
         'w-full rounded-(--radius-control) border border-line bg-card-deep px-3.5 py-2.5 text-[15px] text-ink transition-colors placeholder:text-ink-faint focus:border-accent focus:outline-none',
         className,
@@ -46,7 +48,7 @@ export function Input({
       {...props}
     />
   )
-}
+})
 
 export function Textarea({
   className,
@@ -65,9 +67,11 @@ export function Textarea({
 
 export function Field({
   label,
+  hint,
   children,
 }: {
   label: string
+  hint?: string
   children: ReactNode
 }) {
   return (
@@ -75,8 +79,51 @@ export function Field({
       <span className="mb-1.5 block text-[13px] font-medium text-ink-soft">
         {label}
       </span>
+      {hint && (
+        <p className="mb-2 text-[13px] leading-relaxed text-ink-faint">{hint}</p>
+      )}
       {children}
     </label>
+  )
+}
+
+/** Short contextual tip — optional dismiss stores a localStorage key. */
+export function Hint({
+  children,
+  dismissKey,
+  className,
+}: {
+  children: ReactNode
+  /** When set, a dismiss button hides this hint until localStorage is cleared. */
+  dismissKey?: string
+  className?: string
+}) {
+  const [dismissed, setDismissed] = useState(
+    () => dismissKey != null && localStorage.getItem(dismissKey) === '1',
+  )
+  if (dismissed) return null
+  return (
+    <div
+      className={cn(
+        'flex items-start justify-between gap-3 rounded-(--radius-control) border border-line bg-card-deep px-4 py-3 text-[13px] leading-relaxed text-ink-soft',
+        className,
+      )}
+    >
+      <div className="min-w-0">{children}</div>
+      {dismissKey && (
+        <button
+          type="button"
+          onClick={() => {
+            localStorage.setItem(dismissKey, '1')
+            setDismissed(true)
+          }}
+          className="shrink-0 cursor-pointer rounded-full p-1 text-ink-faint hover:bg-card hover:text-ink"
+          aria-label="Dismiss tip"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -98,7 +145,16 @@ export function Modal({
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
+    if (open && !dialog.open) {
+      dialog.showModal()
+      // showModal() focuses the first focusable element (the close button).
+      // Defer to the input marked with autoFocus instead.
+      requestAnimationFrame(() => {
+        dialog
+          .querySelector<HTMLElement>('input[autofocus], textarea[autofocus]')
+          ?.focus()
+      })
+    }
     if (!open && dialog.open) dialog.close()
   }, [open])
 
@@ -141,5 +197,122 @@ export function Spinner({ className }: { className?: string }) {
         className,
       )}
     />
+  )
+}
+
+export const Select = forwardRef<
+  HTMLSelectElement,
+  SelectHTMLAttributes<HTMLSelectElement> & { compact?: boolean }
+>(function Select({ className, compact, children, ...props }, ref) {
+  return (
+    <div className="relative">
+      <select
+        ref={ref}
+        className={cn(
+          'w-full cursor-pointer appearance-none rounded-(--radius-control) border border-line bg-card-deep text-ink transition-colors hover:border-ink-faint focus:border-accent focus:outline-none',
+          compact
+            ? 'py-1.5 pl-8 pr-8 text-[13px] font-medium'
+            : 'px-3.5 py-2.5 text-[15px]',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </select>
+      <ChevronDown
+        className={cn(
+          'pointer-events-none absolute top-1/2 size-3.5 -translate-y-1/2 text-ink-faint',
+          compact ? 'right-2.5' : 'right-3',
+        )}
+      />
+    </div>
+  )
+})
+
+export function SectionLabel({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <h2
+      className={cn(
+        'section-label mb-4 text-[13px] font-semibold uppercase tracking-wide text-ink-faint',
+        className,
+      )}
+    >
+      {children}
+    </h2>
+  )
+}
+
+export function Skeleton({ className }: { className?: string }) {
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        'animate-pulse rounded-(--radius-control) bg-card-deep',
+        className,
+      )}
+    />
+  )
+}
+
+export function PageLoading({ label = 'Loading…' }: { label?: string }) {
+  return (
+    <div
+      role="status"
+      className="flex flex-col items-center justify-center py-24 text-center"
+    >
+      <Spinner className="size-6" />
+      <p className="mt-4 text-[15px] text-ink-faint">{label}</p>
+    </div>
+  )
+}
+
+export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  destructive,
+  busy,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm: () => void
+  title: string
+  description: string
+  confirmLabel?: string
+  cancelLabel?: string
+  destructive?: boolean
+  busy?: boolean
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      <p className="text-[15px] leading-relaxed text-ink-soft">{description}</p>
+      <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button variant="ghost" onClick={onClose} disabled={busy}>
+          {cancelLabel}
+        </Button>
+        <Button
+          variant={destructive ? 'quiet' : 'primary'}
+          onClick={onConfirm}
+          disabled={busy}
+          className={
+            destructive
+              ? 'border-danger/40 text-danger hover:border-danger hover:bg-danger/10'
+              : undefined
+          }
+        >
+          {busy ? 'One moment…' : confirmLabel}
+        </Button>
+      </div>
+    </Modal>
   )
 }

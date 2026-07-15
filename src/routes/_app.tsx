@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import {
   Link,
   Outlet,
@@ -6,10 +5,11 @@ import {
   redirect,
   useRouter,
 } from '@tanstack/react-router'
-import { LogOut, Moon, Sun } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 
 import { authClient } from '#/lib/auth-client'
 import { getSessionUser } from '#/server/auth'
+import { ThemeToggle } from '#/components/theme-toggle'
 
 export const Route = createFileRoute('/_app')({
   beforeLoad: async ({ location }) => {
@@ -21,30 +21,6 @@ export const Route = createFileRoute('/_app')({
   },
   component: AppLayout,
 })
-
-function ThemeToggle() {
-  const [dark, setDark] = useState(false)
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains('dark'))
-  }, [])
-
-  function toggle() {
-    const next = !dark
-    setDark(next)
-    document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('shelf-theme', next ? 'dark' : 'light')
-  }
-
-  return (
-    <button
-      onClick={toggle}
-      aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className="rounded-full p-2 text-ink-soft hover:bg-card-deep hover:text-ink cursor-pointer"
-    >
-      {dark ? <Sun className="size-4.5" /> : <Moon className="size-4.5" />}
-    </button>
-  )
-}
 
 function AppLayout() {
   const router = useRouter()

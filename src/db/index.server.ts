@@ -1,5 +1,7 @@
+import '@tanstack/react-start/server-only'
+
 import { drizzle } from 'drizzle-orm/libsql'
-import { createClient } from '@libsql/client'
+import { createClient } from '@libsql/client/node'
 
 import * as schema from './schema.ts'
 

@@ -1,4 +1,10 @@
-import { sqliteTable, integer, text, index } from 'drizzle-orm/sqlite-core'
+import {
+  sqliteTable,
+  integer,
+  text,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 // ---------- better-auth tables ----------
@@ -75,7 +81,7 @@ export const ITEM_TYPES = [
 ] as const
 export type ItemType = (typeof ITEM_TYPES)[number]
 
-export const LIST_TYPES = [...ITEM_TYPES, 'mixed'] as const
+export const LIST_TYPES = [...ITEM_TYPES, 'mixed', 'trip'] as const
 export type ListType = (typeof LIST_TYPES)[number]
 
 export const ITEM_STATUSES = ['to_try', 'done', 'abandoned'] as const
@@ -91,6 +97,8 @@ export const lists = sqliteTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     joinCode: text('join_code').unique(),
+    // Revocable code for the public read-only page (/s/$code).
+    viewCode: text('view_code').unique(),
     // One auto-created shelf per user per type; items land here unless the
     // user picks a specific shelf.
     isDefault: integer('is_default', { mode: 'boolean' })
@@ -154,6 +162,60 @@ export const items = sqliteTable(
   (t) => [index('items_list_idx').on(t.listId)],
 )
 
+export const ACTIVITY_ACTIONS = [
+  'added',
+  'completed',
+  'abandoned',
+  'reverted',
+  'removed',
+  'joined',
+] as const
+export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number]
+
+export const activity = sqliteTable(
+  'activity',
+  {
+    id: text('id').primaryKey(),
+    listId: text('list_id')
+      .notNull()
+      .references(() => lists.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    action: text('action', { enum: ACTIVITY_ACTIONS }).notNull(),
+    // Denormalized so events still render after the item is deleted.
+    itemTitle: text('item_title'),
+    itemType: text('item_type', { enum: ITEM_TYPES }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [index('activity_list_idx').on(t.listId)],
+)
+
+/** One 👍 per user per item — a lightweight "nice pick" on shared shelves. */
+export const itemReactions = sqliteTable(
+  'item_reactions',
+  {
+    id: text('id').primaryKey(),
+    itemId: text('item_id')
+      .notNull()
+      .references(() => items.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [
+    index('item_reactions_item_idx').on(t.itemId),
+    uniqueIndex('item_reactions_item_user_idx').on(t.itemId, t.userId),
+  ],
+)
+
 export type List = typeof lists.$inferSelect
 export type ListMember = typeof listMembers.$inferSelect
 export type Item = typeof items.$inferSelect
+export type Activity = typeof activity.$inferSelect
+export type ItemReaction = typeof itemReactions.$inferSelect

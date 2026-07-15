@@ -1,6 +1,7 @@
 import {
   Book,
   Clapperboard,
+  Compass,
   Gift,
   Layers,
   MapPin,
@@ -106,6 +107,12 @@ export const LIST_TYPE_CONFIG: Record<
     icon: Layers,
     textClass: 'text-cat-mixed',
     bgClass: 'bg-cat-mixed',
+  },
+  trip: {
+    label: 'Trip',
+    icon: Compass,
+    textClass: 'text-cat-trip',
+    bgClass: 'bg-cat-trip',
   },
 }
 

@@ -32,6 +32,7 @@
   --cat-place: #0d9488;
   --cat-wishlist: #a16207;
   --cat-mixed: #52525b;
+  --cat-trip: #4f46e5;
 }
 
 .dark {
@@ -54,6 +55,7 @@
   --cat-place: #2dd4bf;
   --cat-wishlist: #d4a373;
   --cat-mixed: #a1a1aa;
+  --cat-trip: #818cf8;
 }
 
 @theme inline {
@@ -76,6 +78,7 @@
   --color-cat-place: var(--cat-place);
   --color-cat-wishlist: var(--cat-wishlist);
   --color-cat-mixed: var(--cat-mixed);
+  --color-cat-trip: var(--cat-trip);
 
   --font-display: 'Space Grotesk Variable', system-ui, sans-serif;
   --font-sans: 'Schibsted Grotesk Variable', system-ui, sans-serif;
@@ -93,6 +96,22 @@ html {
 
 body {
   min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Filter / status pill — active state reads as selected, not inverted chrome. */
+.pill-active {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.pill-idle {
+  border: 1px solid var(--line);
+  background: var(--card-deep);
+  color: var(--ink-soft);
+}
+.pill-idle:hover {
+  color: var(--ink);
 }
 
 .font-display {
@@ -158,6 +177,86 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Trip shelf — route-line card treatment on home grid. */
+.trip-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      ellipse 120% 80% at 100% 0%,
+      color-mix(in srgb, var(--cat-trip) 14%, transparent),
+      transparent 55%
+    ),
+    var(--card);
+}
+.trip-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, var(--cat-trip) 22%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 18px 18px;
+  opacity: 0.35;
+  pointer-events: none;
+  mask-image: linear-gradient(135deg, black 0%, transparent 62%);
+}
+
+/* Itinerary day sections — vertical route spine. */
+.trip-day-section {
+  position: relative;
+  padding-left: 1.25rem;
+}
+.trip-day-section::before {
+  content: '';
+  position: absolute;
+  left: 0.2rem;
+  top: 2rem;
+  bottom: 0.5rem;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    var(--cat-trip),
+    color-mix(in srgb, var(--cat-trip) 30%, transparent)
+  );
+}
+.trip-day-heading {
+  position: relative;
+}
+.trip-day-heading::before {
+  content: '';
+  position: absolute;
+  left: -1.05rem;
+  top: 0.55rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--cat-trip);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cat-trip) 25%, transparent);
+}
+
+/* Leaflet map — dark mode via inverted OSM tiles (Nibbbl pattern). */
+.dark-tiles {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+.dark-tiles-container .leaflet-control-zoom,
+.dark-tiles-container .leaflet-control-attribution {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+.dark-tiles-container .leaflet-container {
+  background: #242424;
+}
+
+/* Leaflet needs an explicit ancestor height chain — percentage alone is not enough. */
+.trip-map-root,
+.trip-map-root .leaflet-container {
+  height: 100%;
+  width: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

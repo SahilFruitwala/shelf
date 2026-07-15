@@ -1,13 +1,13 @@
 import { getRequest } from '@tanstack/react-start/server'
 import { and, eq } from 'drizzle-orm'
 
-import { auth } from '#/lib/auth'
-import { db } from '#/db'
-import { ITEM_TYPES, listMembers, lists } from '#/db/schema'
-import type { ItemType } from '#/db/schema'
+import { ITEM_TYPES, activity, listMembers, lists } from '#/db/schema'
+import type { ActivityAction, ItemType } from '#/db/schema'
+import { getAuth, getDb } from './db-access'
 
 export async function requireUser() {
   const { headers } = getRequest()
+  const auth = await getAuth()
   const session = await auth.api.getSession({ headers })
   if (!session?.user) {
     throw new Error('Not signed in')
@@ -16,6 +16,7 @@ export async function requireUser() {
 }
 
 export async function requireMembership(listId: string, userId: string) {
+  const db = await getDb()
   const membership = await db.query.listMembers.findFirst({
     where: and(eq(listMembers.listId, listId), eq(listMembers.userId, userId)),
   })
@@ -36,6 +37,7 @@ const DEFAULT_LIST_NAMES: Record<ItemType, string> = {
 
 /** The user's default shelf for a type, created on first use. */
 export async function getOrCreateDefaultList(userId: string, type: ItemType) {
+  const db = await getDb()
   const existing = await db.query.lists.findFirst({
     where: and(
       eq(lists.ownerId, userId),
@@ -72,6 +74,23 @@ export async function ensureDefaultShelves(userId: string) {
   for (const type of ITEM_TYPES) {
     await getOrCreateDefaultList(userId, type)
   }
+}
+
+export async function logActivity(
+  listId: string,
+  userId: string,
+  action: ActivityAction,
+  item?: { title: string; type: ItemType },
+) {
+  const db = await getDb()
+  await db.insert(activity).values({
+    id: newId(),
+    listId,
+    userId,
+    action,
+    itemTitle: item?.title,
+    itemType: item?.type,
+  })
 }
 
 // Short, unambiguous join code (no 0/O/1/l/I).

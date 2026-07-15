@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Link2, MapPin, PenLine, Search } from 'lucide-react'
 
-import { ITEM_TYPES } from '#/db/schema'
-import type { ItemType } from '#/db/schema'
-import { CATEGORIES } from '#/lib/categories'
+import { ITEM_TYPES, type ItemStatus, type ItemType, type ListType } from '#/db/schema'
+import { CATEGORIES, statusLabel } from '#/lib/categories'
+import { isMultiTypeShelf } from '#/lib/list-types'
 import { cn } from '#/lib/utils'
-import { addItem } from '#/server/items'
+import { addItem, findDuplicatesOnShelf } from '#/server/items'
 import { getMyLists } from '#/server/lists'
 import {
   fetchLinkPreview,
@@ -15,7 +15,7 @@ import {
   searchTmdb,
 } from '#/server/lookup'
 import type { LookupResult } from '#/server/lookup'
-import { Button, Field, Input, Modal, Spinner, Textarea } from '#/components/ui'
+import { Button, Field, Input, Modal, Select, Spinner, Textarea } from '#/components/ui'
 
 function useDebounced(value: string, ms: number) {
   const [debounced, setDebounced] = useState(value)
@@ -34,8 +34,13 @@ function SearchPicker({
   onPick: (r: LookupResult) => void
 }) {
   const config = CATEGORIES[type]
+  const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebounced(query.trim(), 350)
+
+  useLayoutEffect(() => {
+    inputRef.current?.focus()
+  }, [])
   const isPlaces =
     config.lookup === 'places' || config.lookup === 'places-restaurant'
 
@@ -64,6 +69,7 @@ function SearchPicker({
       <div className="relative">
         <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-faint" />
         <Input
+          ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={config.lookupHint}
@@ -120,7 +126,7 @@ function SearchPicker({
         <p className="py-6 text-center text-sm text-danger">
           {isPlaces
             ? "Couldn't reach the places service — try again, or add it manually below"
-            : "Lookup failed — try again, or add it manually below"}
+            : 'Lookup failed — try again, or add it manually below'}
         </p>
       )}
 
@@ -141,8 +147,13 @@ function LinkPicker({
   onPick: (r: LookupResult) => void
 }) {
   const config = CATEGORIES[type]
+  const inputRef = useRef<HTMLInputElement>(null)
   const [url, setUrl] = useState('')
   const [failed, setFailed] = useState(false)
+
+  useLayoutEffect(() => {
+    inputRef.current?.focus()
+  }, [])
 
   const fetchPreview = useMutation({
     mutationFn: () => fetchLinkPreview({ data: url.trim() }),
@@ -165,6 +176,7 @@ function LinkPicker({
         <div className="relative flex-1">
           <Link2 className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-faint" />
           <Input
+            ref={inputRef}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://…"
@@ -206,10 +218,13 @@ export function AddItemDialog({
   /** Omit both to add from anywhere — the item lands on the default shelf
    *  for its type unless the user picks a specific one. */
   listId?: string
-  listType?: ItemType | 'mixed'
+  listType?: ItemType | ListType
 }) {
   const queryClient = useQueryClient()
-  const fixedType = listType && listType !== 'mixed' ? listType : null
+  const fixedType: ItemType | null =
+    listType && !isMultiTypeShelf(listType)
+      ? (listType as ItemType)
+      : null
   const [type, setType] = useState<ItemType | null>(fixedType)
   const [manual, setManual] = useState(false)
   const [prefilled, setPrefilled] = useState(false)
@@ -221,6 +236,10 @@ export function AddItemDialog({
   const [metadata, setMetadata] = useState<Record<string, string>>({})
   // '' = the default shelf for the picked type.
   const [targetListId, setTargetListId] = useState('')
+  const [duplicateMatches, setDuplicateMatches] = useState<
+    Array<{ id: string; title: string; status: string }>
+  >([])
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false)
 
   // Global mode offers a shelf picker; list mode is already scoped.
   const globalMode = !listId
@@ -230,7 +249,9 @@ export function AddItemDialog({
     enabled: globalMode && open,
   })
   const shelfChoices = (myLists ?? []).filter(
-    (l) => !l.isDefault && (l.type === type || l.type === 'mixed'),
+    (l) =>
+      !l.isDefault &&
+      (l.type === type || isMultiTypeShelf(l.type)),
   )
 
   function reset() {
@@ -243,6 +264,8 @@ export function AddItemDialog({
     setImageUrl('')
     setMetadata({})
     setTargetListId('')
+    setDuplicateMatches([])
+    setCheckingDuplicate(false)
   }
 
   function close() {
@@ -276,9 +299,36 @@ export function AddItemDialog({
         queryKey: ['list', result.listId],
       })
       await queryClient.invalidateQueries({ queryKey: ['lists'] })
+      await queryClient.invalidateQueries({ queryKey: ['activity'] })
       close()
     },
   })
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!type || save.isPending || checkingDuplicate) return
+
+    if (duplicateMatches.length === 0) {
+      setCheckingDuplicate(true)
+      try {
+        const matches = await findDuplicatesOnShelf({
+          data: {
+            listId: listId ?? (targetListId || undefined),
+            type,
+            title,
+          },
+        })
+        if (matches.length > 0) {
+          setDuplicateMatches(matches)
+          return
+        }
+      } finally {
+        setCheckingDuplicate(false)
+      }
+    }
+
+    save.mutate()
+  }
 
   const showForm = manual || prefilled
   const config = type ? CATEGORIES[type] : null
@@ -346,13 +396,7 @@ export function AddItemDialog({
 
       {/* Step 3 — confirm / edit */}
       {type && showForm && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            save.mutate()
-          }}
-          className="space-y-4"
-        >
+        <form onSubmit={handleSubmit} className="space-y-4">
           {imageUrl && (
             <img
               src={imageUrl}
@@ -369,7 +413,10 @@ export function AddItemDialog({
           <Field label="Title">
             <Input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value)
+                setDuplicateMatches([])
+              }}
               required
               autoFocus={!prefilled}
             />
@@ -384,10 +431,9 @@ export function AddItemDialog({
           </Field>
           {globalMode && shelfChoices.length > 0 && (
             <Field label="Shelf">
-              <select
+              <Select
                 value={targetListId}
                 onChange={(e) => setTargetListId(e.target.value)}
-                className="w-full cursor-pointer rounded-(--radius-control) border border-line bg-card-deep px-3.5 py-2.5 text-[15px] text-ink transition-colors focus:border-accent focus:outline-none"
               >
                 <option value="">{CATEGORIES[type].label} — default</option>
                 {shelfChoices.map((l) => (
@@ -396,7 +442,7 @@ export function AddItemDialog({
                     {l.memberCount > 1 ? ' (shared)' : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
           )}
           {manual && (
@@ -418,6 +464,26 @@ export function AddItemDialog({
                 />
               </Field>
             </>
+          )}
+
+          {duplicateMatches.length > 0 && (
+            <div className="rounded-(--radius-control) border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-[14px]">
+              <p className="font-medium text-ink">
+                Looks like this is already on the shelf
+              </p>
+              <ul className="mt-1.5 space-y-0.5 text-ink-soft">
+                {duplicateMatches.map((m) => (
+                  <li key={m.id}>
+                    “{m.title}” · {statusLabel(type!, m.status as ItemStatus)}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[13px] text-ink-faint">
+                We match by title so you don&apos;t end up with duplicates. Use
+                the existing entry, or tap Add anyway if it&apos;s really a
+                different place.
+              </p>
+            </div>
           )}
 
           {save.isError && (
@@ -443,10 +509,10 @@ export function AddItemDialog({
             <Button
               type="submit"
               variant="primary"
-              disabled={save.isPending}
+              disabled={save.isPending || checkingDuplicate}
               className="px-6"
             >
-              Add to shelf
+              {duplicateMatches.length > 0 ? 'Add anyway' : 'Add to shelf'}
             </Button>
           </div>
         </form>

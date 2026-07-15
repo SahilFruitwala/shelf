@@ -1,11 +1,19 @@
 import { createServerFn } from '@tanstack/react-start'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 
-import { db } from '#/db'
-import { ITEM_STATUSES, ITEM_TYPES, items } from '#/db/schema'
+import { getDb } from './db-access'
+import {
+  ITEM_STATUSES,
+  ITEM_TYPES,
+  items,
+  listMembers,
+  lists,
+} from '#/db/schema'
 import type { ItemStatus, ItemType } from '#/db/schema'
+import { normalizeTitle } from '#/lib/utils'
 import {
   getOrCreateDefaultList,
+  logActivity,
   newId,
   requireMembership,
   requireUser,
@@ -38,6 +46,7 @@ function cleanItemInput(data: ItemInput) {
 export const addItem = createServerFn({ method: 'POST' })
   .validator(cleanItemInput)
   .handler(async ({ data }) => {
+    const db = await getDb()
     const me = await requireUser()
 
     let listId: string
@@ -60,7 +69,44 @@ export const addItem = createServerFn({ method: 'POST' })
       metadata: data.metadata,
       addedBy: me.id,
     })
+    await logActivity(listId, me.id, 'added', {
+      title: data.title,
+      type: data.type,
+    })
     return { id, listId }
+  })
+
+/** Title matches already on this shelf — for duplicate warnings at add-time. */
+export const findDuplicatesOnShelf = createServerFn({ method: 'GET' })
+  .validator(
+    (data: { listId?: string; type: ItemType; title: string }) => ({
+      listId: data.listId,
+      type: data.type,
+      title: data.title.trim(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    if (!data.title) return []
+
+    const listId = data.listId
+      ? (await requireMembership(data.listId, me.id), data.listId)
+      : await getOrCreateDefaultList(me.id, data.type)
+
+    const normalized = normalizeTitle(data.title)
+    const shelfItems = await db
+      .select({
+        id: items.id,
+        title: items.title,
+        status: items.status,
+      })
+      .from(items)
+      .where(eq(items.listId, listId))
+
+    return shelfItems.filter(
+      (i) => normalizeTitle(i.title) === normalized,
+    )
   })
 
 export const updateItem = createServerFn({ method: 'POST' })
@@ -75,6 +121,7 @@ export const updateItem = createServerFn({ method: 'POST' })
     }) => data,
   )
   .handler(async ({ data }) => {
+    const db = await getDb()
     const me = await requireUser()
     const item = await db.query.items.findFirst({
       where: eq(items.id, data.itemId),
@@ -99,12 +146,125 @@ export const updateItem = createServerFn({ method: 'POST' })
       .where(eq(items.id, data.itemId))
   })
 
+export const moveItem = createServerFn({ method: 'POST' })
+  .validator((data: { itemId: string; targetListId: string }) => data)
+  .handler(async ({ data }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    const item = await db.query.items.findFirst({
+      where: eq(items.id, data.itemId),
+    })
+    if (!item) throw new Error('Item not found')
+    if (item.listId === data.targetListId) return
+
+    await requireMembership(item.listId, me.id)
+    await requireMembership(data.targetListId, me.id)
+
+    const target = await db.query.lists.findFirst({
+      where: eq(lists.id, data.targetListId),
+    })
+    if (!target) throw new Error('Shelf not found')
+    if (target.type !== 'mixed' && target.type !== 'trip' && target.type !== item.type)
+      throw new Error(`This shelf only holds ${target.type}s`)
+
+    await db
+      .update(items)
+      .set({ listId: data.targetListId })
+      .where(eq(items.id, data.itemId))
+  })
+
+export const bulkSetItemStatus = createServerFn({ method: 'POST' })
+  .validator((data: { itemIds: Array<string>; status: ItemStatus }) => {
+    if (!ITEM_STATUSES.includes(data.status)) throw new Error('Unknown status')
+    if (data.itemIds.length === 0) throw new Error('No items selected')
+    return data
+  })
+  .handler(async ({ data }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    const rows = await db
+      .select()
+      .from(items)
+      .where(inArray(items.id, data.itemIds))
+    if (rows.length === 0) return
+
+    const listIds = new Set(rows.map((r) => r.listId))
+    if (listIds.size !== 1) throw new Error('Items must be on the same shelf')
+    await requireMembership(rows[0]!.listId, me.id)
+
+    await db
+      .update(items)
+      .set({
+        status: data.status,
+        completedAt: data.status === 'done' ? new Date() : null,
+      })
+      .where(inArray(items.id, data.itemIds))
+  })
+
+export const bulkMoveItems = createServerFn({ method: 'POST' })
+  .validator(
+    (data: { itemIds: Array<string>; targetListId: string }) => data,
+  )
+  .handler(async ({ data }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    if (data.itemIds.length === 0) throw new Error('No items selected')
+
+    const rows = await db
+      .select()
+      .from(items)
+      .where(inArray(items.id, data.itemIds))
+    if (rows.length === 0) return
+
+    const sourceListId = rows[0]!.listId
+    if (!rows.every((r) => r.listId === sourceListId))
+      throw new Error('Items must be on the same shelf')
+    await requireMembership(sourceListId, me.id)
+    await requireMembership(data.targetListId, me.id)
+
+    const target = await db.query.lists.findFirst({
+      where: eq(lists.id, data.targetListId),
+    })
+    if (!target) throw new Error('Shelf not found')
+
+    for (const item of rows) {
+      if (target.type !== 'mixed' && target.type !== 'trip' && target.type !== item.type)
+        throw new Error(`"${item.title}" doesn't fit on a ${target.type} shelf`)
+    }
+
+    await db
+      .update(items)
+      .set({ listId: data.targetListId })
+      .where(inArray(items.id, data.itemIds))
+  })
+
+export const bulkDeleteItems = createServerFn({ method: 'POST' })
+  .validator((itemIds: Array<string>) => itemIds)
+  .handler(async ({ data: itemIds }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    if (itemIds.length === 0) return
+
+    const rows = await db
+      .select()
+      .from(items)
+      .where(inArray(items.id, itemIds))
+    if (rows.length === 0) return
+
+    const listIds = new Set(rows.map((r) => r.listId))
+    if (listIds.size !== 1) throw new Error('Items must be on the same shelf')
+    await requireMembership(rows[0]!.listId, me.id)
+
+    await db.delete(items).where(inArray(items.id, itemIds))
+  })
+
 export const setItemStatus = createServerFn({ method: 'POST' })
   .validator((data: { itemId: string; status: ItemStatus }) => {
     if (!ITEM_STATUSES.includes(data.status)) throw new Error('Unknown status')
     return data
   })
   .handler(async ({ data }) => {
+    const db = await getDb()
     const me = await requireUser()
     const item = await db.query.items.findFirst({
       where: eq(items.id, data.itemId),
@@ -119,11 +279,102 @@ export const setItemStatus = createServerFn({ method: 'POST' })
         completedAt: data.status === 'done' ? new Date() : null,
       })
       .where(eq(items.id, data.itemId))
+
+    if (item.status !== data.status) {
+      const action =
+        data.status === 'done'
+          ? 'completed'
+          : data.status === 'abandoned'
+            ? 'abandoned'
+            : 'reverted'
+      await logActivity(item.listId, me.id, action, {
+        title: item.title,
+        type: item.type,
+      })
+    }
   })
+
+export const searchMyItems = createServerFn({ method: 'GET' })
+  .validator((query: string) => query.trim())
+  .handler(async ({ data: query }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    if (query.length < 2) return []
+
+    const memberships = await db
+      .select({ listId: listMembers.listId })
+      .from(listMembers)
+      .where(eq(listMembers.userId, me.id))
+    const listIds = memberships.map((m) => m.listId)
+    if (listIds.length === 0) return []
+
+    const escaped = query.replace(/[\\%_]/g, (c) => `\\${c}`)
+    const pattern = `%${escaped}%`
+    const rows = await db
+      .select({
+        item: items,
+        listName: lists.name,
+      })
+      .from(items)
+      .innerJoin(lists, eq(items.listId, lists.id))
+      .where(
+        and(
+          inArray(items.listId, listIds),
+          or(
+            // Qualified names written out: interpolating items.title renders
+            // an unqualified column name.
+            sql`items.title like ${pattern} escape '\\'`,
+            sql`items.notes like ${pattern} escape '\\'`,
+          ),
+        ),
+      )
+      .orderBy(desc(items.createdAt))
+      .limit(30)
+
+    return rows.map((r) => ({ ...r.item, listName: r.listName }))
+  })
+
+const DUSTY_AFTER_DAYS = 60
+
+/** Oldest still-untried items — the ones quietly gathering dust. */
+export const getDustyItems = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const db = await getDb()
+    const me = await requireUser()
+
+    const memberships = await db
+      .select({ listId: listMembers.listId })
+      .from(listMembers)
+      .where(eq(listMembers.userId, me.id))
+    const listIds = memberships.map((m) => m.listId)
+    if (listIds.length === 0) return []
+
+    const cutoff = new Date(Date.now() - DUSTY_AFTER_DAYS * 86_400_000)
+    const rows = await db
+      .select({
+        item: items,
+        listName: lists.name,
+      })
+      .from(items)
+      .innerJoin(lists, eq(items.listId, lists.id))
+      .where(
+        and(
+          inArray(items.listId, listIds),
+          eq(items.status, 'to_try'),
+          lt(items.createdAt, cutoff),
+        ),
+      )
+      .orderBy(items.createdAt)
+      .limit(6)
+
+    return rows.map((r) => ({ ...r.item, listName: r.listName }))
+  },
+)
 
 export const deleteItem = createServerFn({ method: 'POST' })
   .validator((itemId: string) => itemId)
   .handler(async ({ data: itemId }) => {
+    const db = await getDb()
     const me = await requireUser()
     const item = await db.query.items.findFirst({
       where: eq(items.id, itemId),
@@ -132,4 +383,8 @@ export const deleteItem = createServerFn({ method: 'POST' })
     await requireMembership(item.listId, me.id)
 
     await db.delete(items).where(eq(items.id, itemId))
+    await logActivity(item.listId, me.id, 'removed', {
+      title: item.title,
+      type: item.type,
+    })
   })

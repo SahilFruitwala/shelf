@@ -5,6 +5,7 @@ import { motion } from 'motion/react'
 import { authClient } from '#/lib/auth-client'
 import { getSessionUser } from '#/server/auth'
 import { Spotlight } from '#/components/aceternity'
+import { ThemeToggle } from '#/components/theme-toggle'
 import { Button, Field, Input } from '#/components/ui'
 
 export const Route = createFileRoute('/login')({
@@ -46,6 +47,9 @@ function LoginPage() {
 
   return (
     <main className="relative flex min-h-dvh items-center justify-center overflow-hidden p-4 sm:p-6">
+      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
+        <ThemeToggle />
+      </div>
       <Spotlight
         className="-top-40 left-0 md:-top-20 md:left-60"
         fill="#10b981"

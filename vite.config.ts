@@ -9,9 +9,32 @@ import { nitro } from 'nitro/vite'
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
+  ssr: {
+    external: [
+      '@libsql/client',
+      '@libsql/client/node',
+      '@libsql/client/web',
+      'libsql',
+      '@neon-rs/load',
+      'detect-libc',
+    ],
+  },
+  optimizeDeps: {
+    exclude: [
+      '@libsql/client',
+      '@libsql/client/node',
+      '@libsql/client/web',
+      'libsql',
+      '@neon-rs/load',
+    ],
+  },
   plugins: [
     devtools(),
-    nitro({ rollupConfig: { external: [/^@sentry\//] } }),
+    nitro({
+      rollupConfig: {
+        external: [/^@sentry\//, /^@libsql\//],
+      },
+    }),
     tailwindcss(),
     tanstackStart(),
     viteReact(),

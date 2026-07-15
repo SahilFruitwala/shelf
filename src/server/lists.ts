@@ -1,7 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 
-import { db } from '#/db'
 import {
   ITEM_TYPES,
   LIST_TYPES,
@@ -11,8 +10,10 @@ import {
   user,
 } from '#/db/schema'
 import type { ListType } from '#/db/schema'
+import { getDb } from './db-access'
 import {
   ensureDefaultShelves,
+  logActivity,
   newId,
   newJoinCode,
   requireMembership,
@@ -21,6 +22,7 @@ import {
 
 export const getMyLists = createServerFn({ method: 'GET' }).handler(
   async () => {
+    const db = await getDb()
     const me = await requireUser()
     await ensureDefaultShelves(me.id)
 
@@ -88,6 +90,8 @@ export const getMyLists = createServerFn({ method: 'GET' }).handler(
 export const getList = createServerFn({ method: 'GET' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
+    const db = await getDb()
+    const { getReactionsForList } = await import('./reactions-data.server')
     const me = await requireUser()
     await requireMembership(listId, me.id)
 
@@ -96,7 +100,7 @@ export const getList = createServerFn({ method: 'GET' })
     })
     if (!list) throw new Error('List not found')
 
-    const [listItems, members] = await Promise.all([
+    const [listItems, members, reactions] = await Promise.all([
       db
         .select()
         .from(items)
@@ -111,12 +115,16 @@ export const getList = createServerFn({ method: 'GET' })
         .from(listMembers)
         .innerJoin(user, eq(listMembers.userId, user.id))
         .where(eq(listMembers.listId, listId)),
+      getReactionsForList(listId),
     ])
+
+    const reactionsByItem = Object.fromEntries(reactions)
 
     return {
       ...list,
       items: listItems,
       members,
+      reactionsByItem,
       isOwner: list.ownerId === me.id,
       myUserId: me.id,
     }
@@ -131,6 +139,7 @@ export const createList = createServerFn({ method: 'POST' })
     return { name, type: data.type }
   })
   .handler(async ({ data }) => {
+    const db = await getDb()
     const me = await requireUser()
     const listId = newId()
 
@@ -157,6 +166,7 @@ export const renameList = createServerFn({ method: 'POST' })
     return { listId: data.listId, name }
   })
   .handler(async ({ data }) => {
+    const db = await getDb()
     const me = await requireUser()
     const membership = await requireMembership(data.listId, me.id)
     if (membership.role !== 'owner')
@@ -175,6 +185,7 @@ export const renameList = createServerFn({ method: 'POST' })
 export const deleteList = createServerFn({ method: 'POST' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
+    const db = await getDb()
     const me = await requireUser()
     const membership = await requireMembership(listId, me.id)
     if (membership.role !== 'owner')
@@ -188,6 +199,7 @@ export const deleteList = createServerFn({ method: 'POST' })
 export const leaveList = createServerFn({ method: 'POST' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
+    const db = await getDb()
     const me = await requireUser()
     const membership = await requireMembership(listId, me.id)
     if (membership.role === 'owner')
@@ -201,6 +213,7 @@ export const leaveList = createServerFn({ method: 'POST' })
 export const removeMember = createServerFn({ method: 'POST' })
   .validator((data: { listId: string; userId: string }) => data)
   .handler(async ({ data }) => {
+    const db = await getDb()
     const me = await requireUser()
     const membership = await requireMembership(data.listId, me.id)
     if (membership.role !== 'owner')
@@ -223,6 +236,7 @@ export const removeMember = createServerFn({ method: 'POST' })
 export const enableSharing = createServerFn({ method: 'POST' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
+    const db = await getDb()
     const me = await requireUser()
     const membership = await requireMembership(listId, me.id)
     if (membership.role !== 'owner')
@@ -236,6 +250,7 @@ export const enableSharing = createServerFn({ method: 'POST' })
 export const disableSharing = createServerFn({ method: 'POST' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
+    const db = await getDb()
     const me = await requireUser()
     const membership = await requireMembership(listId, me.id)
     if (membership.role !== 'owner')
@@ -244,9 +259,75 @@ export const disableSharing = createServerFn({ method: 'POST' })
     await db.update(lists).set({ joinCode: null }).where(eq(lists.id, listId))
   })
 
+export const enableViewLink = createServerFn({ method: 'POST' })
+  .validator((listId: string) => listId)
+  .handler(async ({ data: listId }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    const membership = await requireMembership(listId, me.id)
+    if (membership.role !== 'owner')
+      throw new Error('Only the owner can share a list')
+
+    const viewCode = newJoinCode()
+    await db.update(lists).set({ viewCode }).where(eq(lists.id, listId))
+    return { viewCode }
+  })
+
+export const disableViewLink = createServerFn({ method: 'POST' })
+  .validator((listId: string) => listId)
+  .handler(async ({ data: listId }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    const membership = await requireMembership(listId, me.id)
+    if (membership.role !== 'owner')
+      throw new Error('Only the owner can manage sharing')
+
+    await db.update(lists).set({ viewCode: null }).where(eq(lists.id, listId))
+  })
+
+/** Public: the read-only view of a shelf, by view code. No auth. */
+export const getPublicList = createServerFn({ method: 'GET' })
+  .validator((code: string) => code)
+  .handler(async ({ data: code }) => {
+    const db = await getDb()
+    const list = await db.query.lists.findFirst({
+      where: eq(lists.viewCode, code),
+    })
+    if (!list) return null
+
+    const [owner, listItems] = await Promise.all([
+      db.query.user.findFirst({
+        where: eq(user.id, list.ownerId),
+        columns: { name: true },
+      }),
+      db
+        .select({
+          id: items.id,
+          type: items.type,
+          title: items.title,
+          notes: items.notes,
+          link: items.link,
+          imageUrl: items.imageUrl,
+          status: items.status,
+          metadata: items.metadata,
+        })
+        .from(items)
+        .where(eq(items.listId, list.id))
+        .orderBy(desc(items.createdAt)),
+    ])
+
+    return {
+      name: list.name,
+      type: list.type,
+      ownerName: owner?.name ?? 'Someone',
+      items: listItems,
+    }
+  })
+
 export const previewJoin = createServerFn({ method: 'GET' })
   .validator((code: string) => code)
   .handler(async ({ data: code }) => {
+    const db = await getDb()
     const me = await requireUser()
     const list = await db.query.lists.findFirst({
       where: eq(lists.joinCode, code),
@@ -277,6 +358,7 @@ export const previewJoin = createServerFn({ method: 'GET' })
 export const joinList = createServerFn({ method: 'POST' })
   .validator((code: string) => code)
   .handler(async ({ data: code }) => {
+    const db = await getDb()
     const me = await requireUser()
     const list = await db.query.lists.findFirst({
       where: eq(lists.joinCode, code),
@@ -296,6 +378,7 @@ export const joinList = createServerFn({ method: 'POST' })
         userId: me.id,
         role: 'editor',
       })
+      await logActivity(list.id, me.id, 'joined')
     }
     return { listId: list.id }
   })

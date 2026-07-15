@@ -1,16 +1,34 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, DoorOpen, Plus, Trash2, UserPlus } from 'lucide-react'
+import {
+  ArrowDownUp,
+  ArrowLeft,
+  CalendarDays,
+  Check,
+  Compass,
+  DoorOpen,
+  FolderInput,
+  Map as MapIcon,
+  MapPin,
+  Plus,
+  Trash2,
+  UserPlus,
+  X,
+} from 'lucide-react'
 
-import type { ItemStatus } from '#/db/schema'
+import type { Item, ItemStatus, ListType } from '#/db/schema'
 import { LIST_TYPE_CONFIG, CATEGORIES } from '#/lib/categories'
-import { cn } from '#/lib/utils'
-import { deleteList, getList, leaveList } from '#/server/lists'
+import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
+import { cn, haversineKm, itemCoords } from '#/lib/utils'
+import { bulkDeleteItems, bulkMoveItems, bulkSetItemStatus } from '#/server/items'
+import { deleteList, getList, getMyLists, leaveList } from '#/server/lists'
 import { AddItemDialog } from '#/components/add-item'
 import { ItemCard } from '#/components/item-card'
 import { ShareDialog } from '#/components/share-dialog'
-import { Button } from '#/components/ui'
+import { TripMapPanel } from '#/components/trip-map-panel'
+import type { MapPinItem } from '#/components/trip-map'
+import { Button, ConfirmDialog, Hint, Modal, PageLoading, Select, Spinner } from '#/components/ui'
 
 export const Route = createFileRoute('/_app/list/$listId')({
   loader: async ({ context, params }) => {
@@ -23,6 +41,92 @@ export const Route = createFileRoute('/_app/list/$listId')({
 })
 
 type StatusFilter = ItemStatus | 'all'
+type SortKey = 'recent' | 'alpha' | 'completed' | 'near'
+function useIsDark() {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const observer = new MutationObserver(onStoreChange)
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class'],
+      })
+      return () => observer.disconnect()
+    },
+    () => document.documentElement.classList.contains('dark'),
+    () => true,
+  )
+}
+
+const BASE_SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: 'recent', label: 'Recently added' },
+  { key: 'alpha', label: 'A–Z' },
+  { key: 'completed', label: 'Recently done' },
+]
+
+function BulkMoveDialog({
+  open,
+  onClose,
+  listType,
+  sourceListId,
+  itemIds,
+  onMoved,
+}: {
+  open: boolean
+  onClose: () => void
+  listType: ListType
+  sourceListId: string
+  itemIds: Array<string>
+  onMoved: () => Promise<void>
+}) {
+  const { data: allLists = [] } = useQuery({
+    queryKey: ['lists'],
+    queryFn: () => getMyLists(),
+    enabled: open,
+  })
+  const targets = allLists.filter(
+    (l) =>
+      l.id !== sourceListId &&
+      (isMultiTypeShelf(listType) ||
+        l.type === listType ||
+        isMultiTypeShelf(l.type)),
+  )
+
+  const move = useMutation({
+    mutationFn: (targetListId: string) =>
+      bulkMoveItems({ data: { itemIds, targetListId } }),
+    onSuccess: async () => {
+      onClose()
+      await onMoved()
+    },
+  })
+
+  return (
+    <Modal open={open} onClose={onClose} title="Move selected items">
+      {targets.length === 0 ? (
+        <p className="py-4 text-[15px] text-ink-soft">
+          No other shelf can hold these — create a compatible shelf first.
+        </p>
+      ) : (
+        <ul className="space-y-1">
+          {targets.map((l) => (
+            <li key={l.id}>
+              <button
+                onClick={() => move.mutate(l.id)}
+                disabled={move.isPending}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-(--radius-control) border border-line bg-card-deep p-3 text-left transition-colors hover:border-ink-faint disabled:opacity-50"
+              >
+                <span className="text-[15px] font-medium">{l.name}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {move.isError && (
+        <p className="mt-3 text-sm text-danger">{move.error.message}</p>
+      )}
+    </Modal>
+  )
+}
 
 function ListPage() {
   const { listId } = Route.useParams()
@@ -36,6 +140,74 @@ function ListPage() {
   const [adding, setAdding] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [filter, setFilter] = useState<StatusFilter>('all')
+  const [sort, setSort] = useState<SortKey>('recent')
+  const [tripView, setTripView] = useState(false)
+  const [showMap, setShowMap] = useState(false)
+  const [mapFocus, setMapFocus] = useState<{ lat: number; lng: number } | null>(
+    null,
+  )
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
+  const isDark = useIsDark()
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkMoving, setBulkMoving] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string
+    description: string
+    confirmLabel: string
+    onConfirm: () => void
+  } | null>(null)
+  const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(
+    null,
+  )
+  const [geoError, setGeoError] = useState<string | null>(null)
+
+  const isGeoShelf =
+    list?.type === 'restaurant' ||
+    list?.type === 'place' ||
+    isTripShelf(list?.type ?? 'restaurant')
+  const hasCoords = list?.items.some((i) => itemCoords(i.metadata)) ?? false
+  const coordsCount =
+    list?.items.filter((i) => itemCoords(i.metadata)).length ?? 0
+  const sortOptions = useMemo(() => {
+    if (isGeoShelf && hasCoords)
+      return [
+        ...BASE_SORT_OPTIONS,
+        { key: 'near' as const, label: 'Nearest first' },
+      ]
+    return BASE_SORT_OPTIONS
+  }, [isGeoShelf, hasCoords])
+  const unscheduledCount = useMemo(() => {
+    if (!list || !isMultiTypeShelf(list.type)) return 0
+    return list.items.filter((i) => !i.metadata?.group?.trim()).length
+  }, [list])
+
+  useEffect(() => {
+    setTripView(list?.type === 'trip')
+    setShowMap(list?.type === 'trip')
+  }, [list?.type, listId])
+
+  useEffect(() => {
+    if (sort !== 'near') return
+    if (!navigator.geolocation) {
+      setGeoError('Geolocation is not available in this browser')
+      return
+    }
+    setGeoError(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        setUserPos({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        }),
+      () => setGeoError("Couldn't get your location — check permissions"),
+      { enableHighAccuracy: true, timeout: 10_000 },
+    )
+  }, [sort])
+
+  useEffect(() => {
+    if (sort === 'near' && !hasCoords) setSort('recent')
+  }, [sort, hasCoords])
 
   const removeList = useMutation({
     mutationFn: () => deleteList({ data: listId }),
@@ -51,17 +223,49 @@ function ListPage() {
       await router.navigate({ to: '/' })
     },
   })
+  const bulkDone = useMutation({
+    mutationFn: (itemIds: Array<string>) =>
+      bulkSetItemStatus({ data: { itemIds, status: 'done' } }),
+    onSuccess: async () => {
+      setSelected(new Set())
+      setSelecting(false)
+      await queryClient.invalidateQueries({ queryKey: ['list', listId] })
+      await queryClient.invalidateQueries({ queryKey: ['activity'] })
+    },
+  })
+  const bulkRemove = useMutation({
+    mutationFn: (itemIds: Array<string>) => bulkDeleteItems({ data: itemIds }),
+    onSuccess: async () => {
+      setSelected(new Set())
+      setSelecting(false)
+      await queryClient.invalidateQueries({ queryKey: ['list', listId] })
+      await queryClient.invalidateQueries({ queryKey: ['lists'] })
+      await queryClient.invalidateQueries({ queryKey: ['activity'] })
+    },
+  })
 
-  if (!list) return null
+  if (!list) {
+    return <PageLoading label="Loading shelf…" />
+  }
 
   const config = LIST_TYPE_CONFIG[list.type]
   const memberNames = new Map(list.members.map((m) => [m.userId, m.name]))
   const showAddedBy = list.members.length > 1
 
-  const toTryLabel =
-    list.type === 'mixed' ? 'To try' : CATEGORIES[list.type].toTryLabel
-  const doneLabel =
-    list.type === 'mixed' ? 'Done' : CATEGORIES[list.type].doneLabel
+  const toTryLabel = isMultiTypeShelf(list.type)
+    ? 'To try'
+    : CATEGORIES[list.type as keyof typeof CATEGORIES].toTryLabel
+  const doneLabel = isMultiTypeShelf(list.type)
+    ? 'Done'
+    : CATEGORIES[list.type as keyof typeof CATEGORIES].doneLabel
+  const tripShelf = isTripShelf(list.type)
+  const multiShelf = isMultiTypeShelf(list.type)
+  const supportsMap =
+    tripShelf ||
+    list.type === 'restaurant' ||
+    list.type === 'place' ||
+    (multiShelf && tripView)
+  const showItinerary = tripView && multiShelf
 
   const counts = {
     all: list.items.length,
@@ -69,10 +273,145 @@ function ListPage() {
     done: list.items.filter((i) => i.status === 'done').length,
     abandoned: list.items.filter((i) => i.status === 'abandoned').length,
   }
-  const visible =
+  const filtered =
     filter === 'all'
       ? list.items
       : list.items.filter((i) => i.status === filter)
+
+  const distances = useMemo(() => {
+    if (sort !== 'near' || !userPos) return new Map<string, number>()
+    const map = new Map<string, number>()
+    for (const item of filtered) {
+      const coords = itemCoords(item.metadata)
+      if (!coords) continue
+      map.set(
+        item.id,
+        haversineKm(userPos.lat, userPos.lng, coords.lat, coords.lng),
+      )
+    }
+    return map
+  }, [filtered, sort, userPos])
+
+  const visible = useMemo(() => {
+    if (sort === 'recent') return filtered
+    return [...filtered].sort((a, b) => {
+      if (sort === 'alpha')
+        return a.title.localeCompare(b.title, undefined, {
+          sensitivity: 'base',
+        })
+      if (sort === 'near') {
+        const ad = distances.get(a.id) ?? Infinity
+        const bd = distances.get(b.id) ?? Infinity
+        return ad - bd
+      }
+      const at = a.completedAt?.getTime() ?? 0
+      const bt = b.completedAt?.getTime() ?? 0
+      return bt - at
+    })
+  }, [filtered, sort, distances])
+
+  const tripGroups = useMemo(() => {
+    if (!showItinerary || !multiShelf) return null
+    const groups = new Map<string, Array<Item>>()
+    for (const item of visible) {
+      const key = item.metadata?.group?.trim() || 'Unscheduled'
+      const arr = groups.get(key) ?? []
+      arr.push(item)
+      groups.set(key, arr)
+    }
+    const keys = [...groups.keys()].sort((a, b) => {
+      if (a === 'Unscheduled') return 1
+      if (b === 'Unscheduled') return -1
+      return a.localeCompare(b, undefined, { sensitivity: 'base' })
+    })
+    return keys.map((key) => ({ key, items: groups.get(key)! }))
+  }, [showItinerary, multiShelf, visible])
+
+  const mapPins = useMemo((): Array<MapPinItem> => {
+    if (!supportsMap) return []
+    return visible
+      .filter((item) => {
+        if (item.type !== 'restaurant' && item.type !== 'place') return false
+        return itemCoords(item.metadata) != null
+      })
+      .map((item) => {
+        const coords = itemCoords(item.metadata)!
+        return {
+          id: item.id,
+          title: item.title,
+          type: item.type,
+          lat: coords.lat,
+          lng: coords.lng,
+          address: item.metadata?.address,
+          group: item.metadata?.group,
+        }
+      })
+  }, [supportsMap, visible])
+
+  const geoPinCount = useMemo(
+    () =>
+      list.items.filter(
+        (i) =>
+          (i.type === 'restaurant' || i.type === 'place') &&
+          itemCoords(i.metadata),
+      ).length,
+    [list.items],
+  )
+
+  const mapMode = supportsMap && showMap
+  const mapListItems = useMemo(() => {
+    if (!mapMode) return visible
+    return visible.filter(
+      (i) => i.type === 'restaurant' || i.type === 'place',
+    )
+  }, [mapMode, visible])
+  const showReactions = list.members.length > 1
+  const selectedIds = [...selected]
+
+  function toggleItem(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function focusItemOnMap(item: Item) {
+    const coords = itemCoords(item.metadata)
+    if (!coords) return
+    setMapFocus(coords)
+    setFocusedItemId(item.id)
+    if (!showMap) setShowMap(true)
+  }
+
+  function renderItem(item: Item) {
+    const coords = itemCoords(item.metadata)
+    const canPin =
+      supportsMap &&
+      coords != null &&
+      (item.type === 'restaurant' || item.type === 'place')
+    return (
+      <ItemCard
+        key={item.id}
+        item={item}
+        listId={listId}
+        showType={multiShelf && !mapMode}
+        showGroup={multiShelf && showItinerary && !mapMode}
+        memberNames={showAddedBy ? memberNames : new Map()}
+        reactions={list!.reactionsByItem[item.id]}
+        myUserId={list!.myUserId}
+        showReactions={showReactions && !mapMode}
+        distanceKm={sort === 'near' ? (distances.get(item.id) ?? null) : null}
+        selectable={selecting}
+        selected={selected.has(item.id)}
+        onToggleSelect={() => toggleItem(item.id)}
+        onShowOnMap={canPin ? () => focusItemOnMap(item) : undefined}
+        compact={mapMode}
+        mapActive={focusedItemId === item.id}
+      />
+    )
+  }
 
   const filters: Array<{ key: StatusFilter; label: string }> = [
     { key: 'all', label: 'All' },
@@ -94,18 +433,43 @@ function ListPage() {
       </Link>
 
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
+        <div className={cn(tripShelf && 'max-w-2xl')}>
           <p
             className={cn(
               'text-[13px] font-semibold uppercase tracking-wide',
               config.textClass,
             )}
           >
-            {config.label}
+            {tripShelf ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Compass className="size-3.5" />
+                {config.label}
+              </span>
+            ) : (
+              config.label
+            )}
           </p>
-          <h1 className="text-hero mt-1 font-display text-3xl font-bold sm:text-4xl">
+          <h1
+            className={cn(
+              'text-hero mt-1 font-display text-3xl font-bold sm:text-4xl',
+              tripShelf && 'text-balance',
+            )}
+          >
             {list.name}
           </h1>
+          {tripShelf && (
+            <p className="mt-1.5 text-[14px] text-ink-soft">
+              Your itinerary — slot items by day, then flip the map to see
+              restaurants and places together.
+            </p>
+          )}
+          {list.type === 'mixed' && (
+            <p className="mt-1.5 text-[14px] text-ink-soft">
+              Mixed shelf — use{' '}
+              <span className="font-medium text-ink">Trip view</span> below to
+              group by day.
+            </p>
+          )}
           {showAddedBy && (
             <p className="mt-1.5 text-[14px] text-ink-soft">
               With{' '}
@@ -129,30 +493,184 @@ function ListPage() {
       </div>
 
       {list.items.length > 0 && (
-        <div className="mb-5 flex flex-wrap gap-1.5">
-          {filters.map((f) => (
+        <div className="mb-5 space-y-3">
+          <div className="flex flex-wrap gap-1.5">
+            {filters.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setFilter(f.key)}
+                className={cn(
+                  'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors cursor-pointer',
+                  filter === f.key
+                    ? 'bg-ink text-bg'
+                    : 'border border-line bg-card-deep text-ink-soft hover:text-ink',
+                )}
+              >
+                {f.label}
+                <span
+                  className={cn(
+                    'ml-1.5',
+                    filter === f.key ? 'opacity-60' : 'text-ink-faint',
+                  )}
+                >
+                  {counts[f.key]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+            <label className="flex items-center gap-2 text-ink-soft">
+              <span className="font-medium">Sort</span>
+              <div className="relative">
+                <ArrowDownUp className="pointer-events-none absolute left-3 top-1/2 z-10 size-3.5 -translate-y-1/2 text-ink-faint" />
+                <Select
+                  compact
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                  aria-label="Sort items"
+                  className="pl-8"
+                >
+                  {sortOptions.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </label>
+
+            {multiShelf && (
+              <button
+                onClick={() => setTripView((v) => !v)}
+                title="Group items by day or plan — for trip itineraries"
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-medium transition-colors cursor-pointer',
+                  tripView
+                    ? 'bg-ink text-bg'
+                    : 'border border-line bg-card-deep text-ink-soft hover:text-ink',
+                )}
+              >
+                <CalendarDays className="size-3.5" />
+                Trip view
+              </button>
+            )}
+
+            {supportsMap && (
+              <button
+                onClick={() => setShowMap((v) => !v)}
+                title="Show restaurants and places on a map"
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-medium transition-colors cursor-pointer',
+                  showMap
+                    ? tripShelf
+                      ? 'bg-cat-trip text-white'
+                      : 'bg-ink text-bg'
+                    : 'border border-line bg-card-deep text-ink-soft hover:text-ink',
+                )}
+              >
+                <MapIcon className="size-3.5" />
+                Map
+                {geoPinCount > 0 && (
+                  <span
+                    className={cn(
+                      'opacity-70',
+                      showMap && (tripShelf ? 'text-white/80' : 'text-bg/80'),
+                    )}
+                  >
+                    ({geoPinCount})
+                  </span>
+                )}
+              </button>
+            )}
+
             <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
+              onClick={() => {
+                setSelecting((s) => !s)
+                setSelected(new Set())
+              }}
+              title="Select several items to mark done or move together"
               className={cn(
-                'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors cursor-pointer',
-                filter === f.key
+                'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-medium transition-colors cursor-pointer',
+                selecting
                   ? 'bg-ink text-bg'
                   : 'border border-line bg-card-deep text-ink-soft hover:text-ink',
               )}
             >
-              {f.label}
-              <span
-                className={cn(
-                  'ml-1.5',
-                  filter === f.key ? 'opacity-60' : 'text-ink-faint',
-                )}
-              >
-                {counts[f.key]}
-              </span>
+              <Check className="size-3.5" />
+              {selecting ? 'Done selecting' : 'Select multiple'}
             </button>
-          ))}
+          </div>
         </div>
+      )}
+
+      {showReactions && list.items.length > 0 && (
+        <Hint dismissKey="hint-reactions" className="mb-4">
+          On a shared shelf, tap <strong className="font-medium text-ink">Nice pick</strong>{' '}
+          on someone else&apos;s addition — a quick nod, not a rating.
+        </Hint>
+      )}
+
+      {selecting && (
+        <Hint className="mb-4">
+          {selected.size === 0
+            ? 'Check the items you want, then use the bar at the bottom to mark done, move, or remove.'
+            : `${selected.size} selected — actions are in the bar below.`}
+        </Hint>
+      )}
+
+      {showItinerary && multiShelf && (
+        <Hint dismissKey="hint-trip" className="mb-4">
+          {unscheduledCount > 0 ? (
+            <>
+              Assign a <strong className="font-medium text-ink">day or group</strong> on each
+              item (⋯ → Edit details) to build your itinerary.{' '}
+              <span className="text-ink-faint">
+                {unscheduledCount} still unscheduled.
+              </span>
+            </>
+          ) : (
+            <>
+              Items are grouped by the day or plan you set under Edit details.
+            </>
+          )}
+        </Hint>
+      )}
+
+      {supportsMap && showMap && (
+        <p className="mb-3 text-[13px] text-ink-faint">
+          Showing restaurants and places — tap a row to focus it on the map.
+        </p>
+      )}
+
+      {sort === 'near' && !userPos && !geoError && (
+        <Hint className="mb-4">
+          <span className="inline-flex items-center gap-2">
+            <Spinner />
+            Getting your location to sort by distance…
+          </span>
+        </Hint>
+      )}
+
+      {sort === 'near' && geoError && (
+        <Hint className="mb-4">
+          <MapPin className="mb-0.5 inline size-3.5" /> {geoError}
+        </Hint>
+      )}
+
+      {sort === 'near' && userPos && (
+        <Hint dismissKey="hint-near" className="mb-4">
+          Sorted by distance from you. Only places added via search or Maps links
+          have locations ({coordsCount} of {list.items.length}).
+        </Hint>
+      )}
+
+      {isGeoShelf && !hasCoords && list.items.length > 0 && sort !== 'near' && (
+        <Hint dismissKey="hint-near-missing" className="mb-4">
+          Want <strong className="font-medium text-ink">nearest first</strong> sorting?
+          Add restaurants via search or paste a Google Maps link so we can save
+          their location.
+        </Hint>
       )}
 
       {list.items.length === 0 ? (
@@ -178,16 +696,138 @@ function ListPage() {
           Nothing matches this filter.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {visible.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              listId={listId}
-              showType={list.type === 'mixed'}
-              memberNames={showAddedBy ? memberNames : new Map()}
-            />
-          ))}
+        <div
+          className={cn(
+            'grid w-full items-start gap-4 lg:gap-5',
+            mapMode && 'lg:grid-cols-2',
+          )}
+        >
+          <div className="min-w-0 space-y-2">
+            {mapMode && mapListItems.length === 0 ? (
+              <p className="rounded-(--radius-card) border border-dashed border-line px-4 py-8 text-center text-[14px] text-ink-faint">
+                No restaurants or places match this filter.
+              </p>
+            ) : tripGroups && !mapMode ? (
+              <div className="space-y-8">
+                {tripGroups.map((group) => (
+                  <section
+                    key={group.key}
+                    className={cn(tripShelf && 'trip-day-section')}
+                  >
+                    <h2
+                      className={cn(
+                        'mb-1 font-display text-lg font-semibold',
+                        tripShelf && 'trip-day-heading',
+                      )}
+                    >
+                      {group.key}
+                    </h2>
+                    {group.key === 'Unscheduled' && (
+                      <p className="mb-3 text-[13px] text-ink-faint">
+                        Open ⋯ → Edit details and add a day or group to slot these in.
+                      </p>
+                    )}
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      {group.items.map(renderItem)}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : mapMode && tripGroups ? (
+              <div className="space-y-5">
+                {tripGroups.map((group) => {
+                  const items = group.items.filter(
+                    (i) => i.type === 'restaurant' || i.type === 'place',
+                  )
+                  if (items.length === 0) return null
+                  return (
+                    <section key={group.key}>
+                      <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-ink-faint">
+                        {group.key}
+                      </h2>
+                      <div className="space-y-1.5">
+                        {items.map(renderItem)}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  'grid gap-2',
+                  mapMode ? 'grid-cols-1' : 'grid-cols-1 gap-3 lg:grid-cols-2',
+                )}
+              >
+                {(mapMode ? mapListItems : visible).map(renderItem)}
+              </div>
+            )}
+          </div>
+          {mapMode && (
+            <div className="sticky top-4 min-w-0">
+              <TripMapPanel
+                pins={mapPins}
+                focus={mapFocus}
+                dark={isDark}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {selecting && (
+        <div className="fixed inset-x-4 bottom-4 z-20 mx-auto flex max-w-lg flex-wrap items-center justify-center gap-2 rounded-(--radius-card) border border-line bg-card/95 px-4 py-3 shadow-xl backdrop-blur-md sm:inset-x-auto sm:bottom-6 sm:rounded-full sm:px-3 sm:py-2">
+          <span className="w-full px-1 text-center text-[13px] font-medium text-ink-soft sm:w-auto sm:text-left">
+            {selected.size === 0
+              ? 'Select items above'
+              : `${selected.size} selected`}
+          </span>
+          <Button
+            variant="quiet"
+            className="px-3 py-1.5 text-[13px]"
+            onClick={() => bulkDone.mutate(selectedIds)}
+            disabled={bulkDone.isPending || selected.size === 0}
+          >
+            <Check className="size-3.5" />
+            Mark done
+          </Button>
+          <Button
+            variant="quiet"
+            className="px-3 py-1.5 text-[13px]"
+            onClick={() => setBulkMoving(true)}
+            disabled={selected.size === 0}
+          >
+            <FolderInput className="size-3.5" />
+            Move
+          </Button>
+          <Button
+            variant="danger"
+            className="px-3 py-1.5 text-[13px]"
+            onClick={() =>
+              setConfirmAction({
+                title: 'Remove selected items?',
+                description: `${selected.size} item${selected.size === 1 ? '' : 's'} will be removed from this shelf.`,
+                confirmLabel: 'Remove',
+                onConfirm: () => bulkRemove.mutate(selectedIds),
+              })
+            }
+            disabled={bulkRemove.isPending || selected.size === 0}
+          >
+            <Trash2 className="size-3.5" />
+            Remove
+          </Button>
+          <Button
+            variant="ghost"
+            className="px-2 py-1.5"
+            onClick={() => {
+              setSelecting(false)
+              setSelected(new Set())
+            }}
+            title="Cancel selection"
+            aria-label="Cancel selection"
+          >
+            <X className="size-3.5" />
+          </Button>
         </div>
       )}
 
@@ -195,14 +835,14 @@ function ListPage() {
         {list.isDefault ? null : list.isOwner ? (
           <Button
             variant="danger"
-            onClick={() => {
-              if (
-                confirm(
-                  `Delete “${list.name}” and everything on it? This can't be undone.`,
-                )
-              )
-                removeList.mutate()
-            }}
+            onClick={() =>
+              setConfirmAction({
+                title: 'Delete this shelf?',
+                description: `“${list.name}” and everything on it will be deleted permanently. This can't be undone.`,
+                confirmLabel: 'Delete shelf',
+                onConfirm: () => removeList.mutate(),
+              })
+            }
           >
             <Trash2 className="size-4" />
             Delete shelf
@@ -210,9 +850,14 @@ function ListPage() {
         ) : (
           <Button
             variant="danger"
-            onClick={() => {
-              if (confirm(`Leave “${list.name}”?`)) leave.mutate()
-            }}
+            onClick={() =>
+              setConfirmAction({
+                title: 'Leave this shelf?',
+                description: `You'll lose access to “${list.name}”. The owner can invite you again later.`,
+                confirmLabel: 'Leave shelf',
+                onConfirm: () => leave.mutate(),
+              })
+            }
           >
             <DoorOpen className="size-4" />
             Leave shelf
@@ -231,9 +876,36 @@ function ListPage() {
         onClose={() => setSharing(false)}
         listId={listId}
         joinCode={list.joinCode}
+        viewCode={list.viewCode}
         members={list.members}
         isOwner={list.isOwner}
         myUserId={list.myUserId}
+      />
+      <BulkMoveDialog
+        open={bulkMoving}
+        onClose={() => setBulkMoving(false)}
+        listType={list.type}
+        sourceListId={listId}
+        itemIds={selectedIds}
+        onMoved={async () => {
+          setSelected(new Set())
+          setSelecting(false)
+          await queryClient.invalidateQueries({ queryKey: ['list', listId] })
+          await queryClient.invalidateQueries({ queryKey: ['lists'] })
+        }}
+      />
+      <ConfirmDialog
+        open={confirmAction != null}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => {
+          confirmAction?.onConfirm()
+          setConfirmAction(null)
+        }}
+        title={confirmAction?.title ?? ''}
+        description={confirmAction?.description ?? ''}
+        confirmLabel={confirmAction?.confirmLabel}
+        destructive
+        busy={removeList.isPending || leave.isPending || bulkRemove.isPending}
       />
     </main>
   )

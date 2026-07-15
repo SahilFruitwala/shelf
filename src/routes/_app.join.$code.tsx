@@ -1,10 +1,11 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { ArrowLeft } from 'lucide-react'
 
 import { LIST_TYPE_CONFIG } from '#/lib/categories'
 import { cn } from '#/lib/utils'
 import { joinList, previewJoin } from '#/server/lists'
-import { Button } from '#/components/ui'
+import { Button, PageLoading } from '#/components/ui'
 
 export const Route = createFileRoute('/_app/join/$code')({
   component: JoinPage,
@@ -30,7 +31,7 @@ function JoinPage() {
     },
   })
 
-  if (preview.isPending) return null
+  if (preview.isPending) return <PageLoading label="Checking invite…" />
 
   if (!preview.data?.found) {
     return (
@@ -59,7 +60,15 @@ function JoinPage() {
 
   return (
     <main className="mx-auto max-w-md py-16 text-center">
-      <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-card">
+      <button
+        type="button"
+        onClick={() => router.navigate({ to: '/' })}
+        className="mb-8 inline-flex cursor-pointer items-center gap-1.5 text-sm text-ink-soft hover:text-ink"
+      >
+        <ArrowLeft className="size-4" />
+        Back to shelves
+      </button>
+      <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-card-deep ring-1 ring-line">
         <Icon className={cn('size-7', config.textClass)} />
       </div>
       <h1 className="font-display text-3xl font-semibold tracking-tight">

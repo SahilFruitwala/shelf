@@ -103,6 +103,7 @@ interface GooglePlace {
   id: string
   displayName?: { text?: string }
   formattedAddress?: string
+  location?: { latitude?: number; longitude?: number }
   rating?: number
   userRatingCount?: number
   priceLevel?: string
@@ -132,6 +133,10 @@ function placeToResult(place: GooglePlace): LookupResult {
     metadata.price = PRICE_LEVELS[place.priceLevel]
   if (place.primaryTypeDisplayName?.text)
     metadata.kind = place.primaryTypeDisplayName.text
+  if (place.location?.latitude != null && place.location?.longitude != null) {
+    metadata.lat = String(place.location.latitude)
+    metadata.lng = String(place.location.longitude)
+  }
   return {
     title: place.displayName?.text ?? 'Unnamed place',
     link:
@@ -184,7 +189,15 @@ async function resolveMapsUrl(
   if (!searchRes.ok)
     throw new Error(`Place lookup failed (${searchRes.status})`)
   const data = (await searchRes.json()) as { places?: Array<GooglePlace> }
-  return (data.places ?? []).map(placeToResult)
+  return (data.places ?? []).map((place) => {
+    const result = placeToResult(place)
+    // Fall back to the pin we pulled from the URL if the API omits location.
+    if (!result.metadata.lat && coords) {
+      result.metadata.lat = coords[1]!
+      result.metadata.lng = coords[2]!
+    }
+    return result
+  })
 }
 
 // Google Maps links, including maps.app.goo.gl short links. Not anchored to the
