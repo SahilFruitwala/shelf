@@ -32,6 +32,7 @@ import { LIST_TYPE_CONFIG, CATEGORIES } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
 import { features } from '#/lib/features'
 import { cn, existingDayGroups, haversineKm, itemCoords } from '#/lib/utils'
+import { useHotkey } from '#/lib/use-hotkey'
 import {
   bulkDeleteItems,
   bulkMoveItems,
@@ -322,6 +323,8 @@ function ListPage() {
 
   const [adding, setAdding] = useState(false)
   const [sharing, setSharing] = useState(false)
+
+  useHotkey('a', () => setAdding(true))
   const [filter, setFilter] = useState<StatusFilter>('all')
   // Empty = all genres. An item matches if it has any selected genre.
   const [genreFilter, setGenreFilter] = useState<Set<string>>(new Set())

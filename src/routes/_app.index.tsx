@@ -8,6 +8,7 @@ import type { ListType } from '#/db/schema'
 import { CATEGORIES, LIST_TYPE_CONFIG } from '#/lib/categories'
 import { isTripShelf } from '#/lib/list-types'
 import { cn, timeAgo } from '#/lib/utils'
+import { useHotkey } from '#/lib/use-hotkey'
 import { getDustyItems, searchMyItems } from '#/server/items'
 import { createList, getMyLists } from '#/server/lists'
 import { ActivityFeed } from '#/components/activity-feed'
@@ -363,6 +364,8 @@ function HomePage() {
   const query = useDebounced(search.trim(), 250)
   const searching = query.length >= 2
 
+  useHotkey('a', () => setAdding(true))
+
   return (
     <main>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4 sm:mb-8">
@@ -385,7 +388,11 @@ function HomePage() {
           <Button variant="quiet" onClick={() => setCreating(true)}>
             New shelf
           </Button>
-          <Button variant="primary" onClick={() => setAdding(true)}>
+          <Button
+            variant="primary"
+            onClick={() => setAdding(true)}
+            title="Add (press A)"
+          >
             <Plus className="size-4" />
             Add
           </Button>
