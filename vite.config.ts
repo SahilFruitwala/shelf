@@ -10,10 +10,11 @@ import { nitro } from 'nitro/vite'
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
   ssr: {
+    // Only the native-binding packages stay external. @libsql/client/web is
+    // pure JS and must be bundled — Vercel's function has no node_modules.
     external: [
       '@libsql/client',
       '@libsql/client/node',
-      '@libsql/client/web',
       'libsql',
       '@neon-rs/load',
       'detect-libc',
@@ -32,7 +33,17 @@ const config = defineConfig({
     devtools(),
     nitro({
       rollupConfig: {
-        external: [/^@sentry\//, /^@libsql\//],
+        // The node/native driver branch stays external so its static
+        // `@libsql/client/node` import can't get hoisted into a shared chunk
+        // that Vercel loads eagerly. It's only dynamic-imported when
+        // DATABASE_URL is file:, which never happens in production.
+        external: [
+          /^@sentry\//,
+          '@libsql/client',
+          '@libsql/client/node',
+          'libsql',
+          'drizzle-orm/libsql/node',
+        ],
       },
     }),
     tailwindcss(),
