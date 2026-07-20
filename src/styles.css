@@ -20,8 +20,8 @@
   --ink-soft: #52525b;
   --ink-faint: #a1a1aa;
   --line: rgba(24, 24, 27, 0.1);
-  --accent: #059669;
-  --accent-soft: rgba(5, 150, 105, 0.12);
+  --accent: #d97706;
+  --accent-soft: rgba(217, 119, 6, 0.12);
   --accent-ink: #ffffff;
   --danger: #dc2626;
 
@@ -43,9 +43,9 @@
   --ink-soft: #a1a1aa;
   --ink-faint: #63636b;
   --line: rgba(250, 250, 250, 0.09);
-  --accent: #10b981;
-  --accent-soft: rgba(16, 185, 129, 0.14);
-  --accent-ink: #052e1f;
+  --accent: #fbbf24;
+  --accent-soft: rgba(251, 191, 36, 0.14);
+  --accent-ink: #422006;
   --danger: #f87171;
 
   --cat-restaurant: #fbbf24;
@@ -257,6 +257,34 @@ body {
 .trip-map-root .leaflet-container {
   height: 100%;
   width: 100%;
+}
+
+/* Landing page — book spines on a shelf, tinted per category via --spine. */
+.spine {
+  background: color-mix(in srgb, var(--spine) 13%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--spine) 36%, transparent);
+  border-top: 3px solid color-mix(in srgb, var(--spine) 65%, transparent);
+  border-radius: 5px 5px 2px 2px;
+  transition: translate 0.25s ease;
+}
+.spine:hover {
+  translate: 0 -6px;
+}
+.spine-label {
+  writing-mode: vertical-rl;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--spine) 45%, var(--ink));
+}
+.shelf-board {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--card-deep);
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 24px -12px color-mix(in srgb, var(--ink) 25%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

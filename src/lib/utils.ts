@@ -41,6 +41,25 @@ export function haversineKm(
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+/**
+ * Return the URL only if it's a safe http(s) link, else undefined. Guards
+ * against stored XSS from `javascript:`/`data:` schemes rendered as hrefs.
+ */
+export function safeHttpUrl(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim()
+  if (!trimmed) return undefined
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return undefined
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return undefined
+  }
+  return parsed.toString()
+}
+
 export function formatDistance(km: number): string {
   if (km < 1) return `${Math.round(km * 1000)} m`
   if (km < 10) return `${km.toFixed(1)} km`
@@ -77,7 +96,7 @@ export function existingDayGroups(
 ): Array<string> {
   const groups = new Set<string>()
   for (const item of items) {
-    const g = item.metadata?.group.trim()
+    const g = item.metadata?.group?.trim()
     if (g) groups.add(g)
   }
   return [...groups].sort((a, b) =>

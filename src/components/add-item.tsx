@@ -84,6 +84,7 @@ function SearchPicker({
           onChange={(e) => setQuery(e.target.value)}
           placeholder={config.lookupHint}
           autoFocus
+          data-autofocus=""
           className="pl-10"
         />
       </div>
@@ -192,6 +193,7 @@ function LinkPicker({
             placeholder="https://…"
             type="url"
             autoFocus
+            data-autofocus=""
             className="pl-10"
           />
         </div>
@@ -201,7 +203,7 @@ function LinkPicker({
           disabled={!url.trim() || fetchPreview.isPending}
         >
           {fetchPreview.isPending ? (
-            <Spinner className="border-accent-ink" />
+            <Spinner className="border-bg" />
           ) : (
             'Fetch'
           )}
@@ -287,6 +289,8 @@ export function AddItemDialog({
     setTitle(r.title)
     setLink(r.link ?? '')
     setImageUrl(r.imageUrl ?? '')
+    // tmdbId/tmdbKind stay in the metadata so the item card can look up
+    // where-to-watch live, per country, whenever it's viewed.
     setMetadata(r.metadata)
     setPrefilled(true)
   }

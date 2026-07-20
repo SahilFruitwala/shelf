@@ -1,11 +1,20 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowDownUp,
+  Clapperboard,
+  ListFilter,
   ArrowLeft,
   CalendarDays,
   Check,
+  ChevronDown,
   Compass,
   DoorOpen,
   FolderInput,
@@ -21,6 +30,7 @@ import {
 import type { Item, ItemStatus, ListType } from '#/db/schema'
 import { LIST_TYPE_CONFIG, CATEGORIES } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
+import { features } from '#/lib/features'
 import { cn, existingDayGroups, haversineKm, itemCoords } from '#/lib/utils'
 import {
   bulkDeleteItems,
@@ -83,6 +93,98 @@ const BASE_SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: 'alpha', label: 'A–Z' },
   { key: 'completed', label: 'Recently done' },
 ]
+
+/** Multi-select genre filter — a checkbox popover styled like the toolbar. */
+function GenreFilter({
+  options,
+  selected,
+  onChange,
+}: {
+  options: Array<string>
+  selected: Set<string>
+  onChange: (next: Set<string>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  function toggle(g: string) {
+    const next = new Set(selected)
+    if (next.has(g)) next.delete(g)
+    else next.add(g)
+    onChange(next)
+  }
+
+  const active = selected.size > 0
+  const label = !active
+    ? 'All genres'
+    : selected.size === 1
+      ? [...selected][0]
+      : `${selected.size} genres`
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={cn(
+          'inline-flex cursor-pointer items-center gap-2 rounded-(--radius-control) border bg-card-deep py-1.5 pl-8 pr-8 text-[13px] font-medium text-ink-soft transition-colors hover:text-ink',
+          active ? 'border-ink-faint text-ink' : 'border-line',
+        )}
+      >
+        <Clapperboard className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint" />
+        {label}
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-72 w-48 overflow-y-auto rounded-(--radius-control) border border-line bg-card p-1 shadow-xl">
+          {active && (
+            <button
+              type="button"
+              onClick={() => onChange(new Set())}
+              className="mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] text-ink-faint hover:bg-card-deep hover:text-ink"
+            >
+              <X className="size-3.5" />
+              Clear
+            </button>
+          )}
+          {options.map((g) => {
+            const on = selected.has(g)
+            return (
+              <button
+                key={g}
+                type="button"
+                onClick={() => toggle(g)}
+                className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-ink-soft hover:bg-card-deep hover:text-ink"
+              >
+                <span
+                  className={cn(
+                    'flex size-4 shrink-0 items-center justify-center rounded border',
+                    on
+                      ? 'border-ink bg-ink text-bg'
+                      : 'border-line bg-card-deep',
+                  )}
+                >
+                  {on && <Check className="size-3" />}
+                </span>
+                {g}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function RenameListDialog({
   open,
@@ -221,6 +323,8 @@ function ListPage() {
   const [adding, setAdding] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [filter, setFilter] = useState<StatusFilter>('all')
+  // Empty = all genres. An item matches if it has any selected genre.
+  const [genreFilter, setGenreFilter] = useState<Set<string>>(new Set())
   const [sort, setSort] = useState<SortKey>('recent')
   const [tripView, setTripView] = useState(false)
   const [showMap, setShowMap] = useState(false)
@@ -262,7 +366,7 @@ function ListPage() {
   }, [isGeoShelf, hasCoords])
   const unscheduledCount = useMemo(() => {
     if (!list || !isMultiTypeShelf(list.type)) return 0
-    return list.items.filter((i) => !i.metadata?.group.trim()).length
+    return list.items.filter((i) => !i.metadata?.group?.trim()).length
   }, [list])
 
   useEffect(() => {
@@ -357,10 +461,28 @@ function ListPage() {
     done: list.items.filter((i) => i.status === 'done').length,
     abandoned: list.items.filter((i) => i.status === 'abandoned').length,
   }
-  const filtered =
+  // Unique genres across the shelf ("Action, Comedy" counts as both).
+  const genreOptions = [
+    ...new Set(
+      list.items.flatMap(
+        (i) => i.metadata?.genre?.split(',').map((g) => g.trim()) ?? [],
+      ),
+    ),
+  ].sort((a, b) => a.localeCompare(b))
+
+  const statusFiltered =
     filter === 'all'
       ? list.items
       : list.items.filter((i) => i.status === filter)
+  const filtered =
+    genreFilter.size > 0
+      ? statusFiltered.filter((i) =>
+          i.metadata?.genre
+            ?.split(',')
+            .map((g) => g.trim())
+            .some((g) => genreFilter.has(g)),
+        )
+      : statusFiltered
 
   const distances = useMemo(() => {
     if (sort !== 'near' || !userPos) return new Map<string, number>()
@@ -398,7 +520,7 @@ function ListPage() {
     if (!showItinerary) return null
     const groups = new Map<string, Array<Item>>()
     for (const item of visible) {
-      const key = item.metadata?.group.trim() || 'Unscheduled'
+      const key = item.metadata?.group?.trim() || 'Unscheduled'
       const arr = groups.get(key) ?? []
       arr.push(item)
       groups.set(key, arr)
@@ -417,7 +539,7 @@ function ListPage() {
       .filter((item) => {
         if (item.type !== 'restaurant' && item.type !== 'place') return false
         if (mapDayFilter) {
-          const group = item.metadata?.group.trim() || 'Unscheduled'
+          const group = item.metadata?.group?.trim() || 'Unscheduled'
           if (group !== mapDayFilter) return false
         }
         return itemCoords(item.metadata) != null
@@ -518,7 +640,7 @@ function ListPage() {
     { key: 'all', label: 'All' },
     { key: 'to_try', label: toTryLabel },
     { key: 'done', label: doneLabel },
-    ...(counts.abandoned > 0
+    ...(counts.abandoned > 0 || filter === 'abandoned'
       ? [{ key: 'abandoned' as const, label: 'Not for us' }]
       : []),
   ]
@@ -592,10 +714,12 @@ function ListPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="quiet" onClick={() => setSharing(true)}>
-            <UserPlus className="size-4" />
-            Share
-          </Button>
+          {features.sharing && (
+            <Button variant="quiet" onClick={() => setSharing(true)}>
+              <UserPlus className="size-4" />
+              Share
+            </Button>
+          )}
           <Button variant="primary" onClick={() => setAdding(true)}>
             <Plus className="size-4" />
             Add
@@ -604,52 +728,49 @@ function ListPage() {
       </div>
 
       {list.items.length > 0 && (
-        <div className="mb-5 space-y-3">
-          <div className="flex flex-wrap gap-1.5">
-            {filters.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className={cn(
-                  'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors cursor-pointer',
-                  filter === f.key
-                    ? 'bg-ink text-bg'
-                    : 'border border-line bg-card-deep text-ink-soft hover:text-ink',
-                )}
+        <div className="mb-5">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px]">
+            <div className="relative">
+              <ListFilter className="pointer-events-none absolute left-3 top-1/2 z-10 size-3.5 -translate-y-1/2 text-ink-faint" />
+              <Select
+                compact
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as StatusFilter)}
+                aria-label="Filter by status"
+                className={cn('pl-8', filter !== 'all' && 'border-ink-faint')}
               >
-                {f.label}
-                <span
-                  className={cn(
-                    'ml-1.5',
-                    filter === f.key ? 'opacity-60' : 'text-ink-faint',
-                  )}
-                >
-                  {counts[f.key]}
-                </span>
-              </button>
-            ))}
-          </div>
+                {filters.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label} ({counts[f.key]})
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
-            <label className="flex items-center gap-2 text-ink-soft">
-              <span className="font-medium">Sort</span>
-              <div className="relative">
-                <ArrowDownUp className="pointer-events-none absolute left-3 top-1/2 z-10 size-3.5 -translate-y-1/2 text-ink-faint" />
-                <Select
-                  compact
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as SortKey)}
-                  aria-label="Sort items"
-                  className="pl-8"
-                >
-                  {sortOptions.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </label>
+            {genreOptions.length > 1 && (
+              <GenreFilter
+                options={genreOptions}
+                selected={genreFilter}
+                onChange={setGenreFilter}
+              />
+            )}
+
+            <div className="relative">
+              <ArrowDownUp className="pointer-events-none absolute left-3 top-1/2 z-10 size-3.5 -translate-y-1/2 text-ink-faint" />
+              <Select
+                compact
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                aria-label="Sort items"
+                className="pl-8"
+              >
+                {sortOptions.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
             {multiShelf && (
               <button
@@ -1022,7 +1143,7 @@ function ListPage() {
         }}
       />
       <ShareDialog
-        open={sharing}
+        open={sharing && features.sharing}
         onClose={() => setSharing(false)}
         listId={listId}
         joinCode={list.joinCode}

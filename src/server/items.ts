@@ -10,7 +10,7 @@ import {
   lists,
 } from '#/db/schema'
 import type { ItemStatus, ItemType } from '#/db/schema'
-import { normalizeTitle } from '#/lib/utils'
+import { normalizeTitle, safeHttpUrl } from '#/lib/utils'
 import {
   getOrCreateDefaultList,
   logActivity,
@@ -38,8 +38,8 @@ function cleanItemInput(data: ItemInput) {
     ...data,
     title,
     notes: data.notes?.trim() || undefined,
-    link: data.link?.trim() || undefined,
-    imageUrl: data.imageUrl?.trim() || undefined,
+    link: safeHttpUrl(data.link),
+    imageUrl: safeHttpUrl(data.imageUrl),
   }
 }
 
@@ -133,9 +133,9 @@ export const updateItem = createServerFn({ method: 'POST' })
       .set({
         ...(title !== undefined && { title }),
         ...(data.notes !== undefined && { notes: data.notes.trim() || null }),
-        ...(data.link !== undefined && { link: data.link.trim() || null }),
+        ...(data.link !== undefined && { link: safeHttpUrl(data.link) ?? null }),
         ...(data.imageUrl !== undefined && {
-          imageUrl: data.imageUrl.trim() || null,
+          imageUrl: safeHttpUrl(data.imageUrl) ?? null,
         }),
         ...(data.metadata !== undefined && { metadata: data.metadata }),
       })

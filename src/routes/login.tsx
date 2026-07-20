@@ -52,7 +52,7 @@ function LoginPage() {
       </div>
       <Spotlight
         className="-top-40 left-0 md:-top-20 md:left-60"
-        fill="#10b981"
+        fill="#d97706"
       />
       <motion.div
         initial={{ opacity: 0, y: 16 }}
@@ -61,7 +61,10 @@ function LoginPage() {
         className="relative z-10 w-full max-w-sm"
       >
         <header className="mb-10 text-center">
-          <h1 className="text-hero font-display text-5xl font-bold">Shelf</h1>
+          <h1 className="font-display text-5xl font-bold">
+            <span className="text-hero">Shelf</span>
+            <span className="text-cat-restaurant">.</span>
+          </h1>
           <p className="mt-3 text-[15px] text-ink-soft">
             Things to try, watch, read, and visit.
           </p>
@@ -129,7 +132,7 @@ function LoginPage() {
               setMode(mode === 'signin' ? 'signup' : 'signin')
               setError(null)
             }}
-            className="cursor-pointer font-medium text-accent underline-offset-2 hover:underline"
+            className="cursor-pointer font-medium text-ink underline underline-offset-2 decoration-cat-restaurant/50 hover:decoration-cat-restaurant"
           >
             {mode === 'signin' ? 'Create an account' : 'Sign in'}
           </button>

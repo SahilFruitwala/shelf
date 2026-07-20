@@ -11,13 +11,21 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  Tv,
 } from 'lucide-react'
 
 import type { Item, ItemType } from '#/db/schema'
 import { CATEGORIES, statusLabel } from '#/lib/categories'
-import { cn, formatDistance, itemCoords, mapsDirectionsUrl } from '#/lib/utils'
+import {
+  cn,
+  formatDistance,
+  itemCoords,
+  mapsDirectionsUrl,
+  safeHttpUrl,
+} from '#/lib/utils'
 import { deleteItem, moveItem, setItemStatus, updateItem } from '#/server/items'
 import { getMyLists } from '#/server/lists'
+import { fetchWatchProviders } from '#/server/lookup'
 import { isMultiTypeShelf } from '#/lib/list-types'
 import { toggleReaction } from '#/server/reactions'
 import {
@@ -26,8 +34,121 @@ import {
   Field,
   Input,
   Modal,
+  Select,
   Textarea,
 } from '#/components/ui'
+
+/** Best guess at the viewer's country, for the default where-to-watch region. */
+function guessCountry(): string {
+  if (typeof navigator === 'undefined') return 'US'
+  for (const loc of navigator.languages ?? [navigator.language]) {
+    const region = loc.split('-')[1]
+    if (region && region.length === 2) return region.toUpperCase()
+  }
+  return 'US'
+}
+
+/** Live "where to watch" for a movie/TV title, switchable by country. */
+export function WatchWhere({
+  tmdbId,
+  kind,
+}: {
+  tmdbId: string
+  kind: 'movie' | 'tv'
+}) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['watch', kind, tmdbId],
+    queryFn: () => fetchWatchProviders({ data: { tmdbId, kind } }),
+    staleTime: 1000 * 60 * 60 * 12,
+  })
+  const [country, setCountry] = useState<string | null>(null)
+
+  if (isLoading)
+    return <p className="mt-2 text-[12px] text-ink-faint">Finding where to watch…</p>
+  if (isError || !data || data.length === 0)
+    return (
+      <p className="mt-2 flex items-center gap-1.5 text-[12px] text-ink-faint">
+        <Tv className="size-3 shrink-0" />
+        No streaming info available.
+      </p>
+    )
+
+  const guess = guessCountry()
+  const active =
+    data.find((c) => c.code === (country ?? guess)) ??
+    data.find((c) => c.code === 'US') ??
+    data[0]
+  const list = active.streaming.length > 0 ? active.streaming : active.rent
+  const rentOnly = active.streaming.length === 0
+  const shown = list.slice(0, 6)
+  const extra = list.length - shown.length
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[12px]">
+      <span className="flex items-center gap-1.5 text-ink-faint">
+        <Tv className="size-3.5 shrink-0" />
+        {rentOnly ? 'Rent/buy' : 'Watch on'}
+      </span>
+      {shown.map((p) =>
+        p.logo ? (
+          <a
+            key={p.name}
+            href={active.link}
+            target="_blank"
+            rel="noreferrer"
+            title={p.name}
+            aria-label={p.name}
+            className="group/logo relative"
+          >
+            <img
+              src={p.logo}
+              alt={p.name}
+              loading="lazy"
+              className="size-7 rounded-lg border border-line object-cover transition-transform group-hover/logo:scale-110"
+            />
+            <span className="pointer-events-none absolute -top-7 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card px-2 py-0.5 text-[11px] font-medium text-ink opacity-0 shadow-lg transition-opacity group-hover/logo:opacity-100">
+              {p.name}
+            </span>
+          </a>
+        ) : (
+          <a
+            key={p.name}
+            href={active.link}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full border border-line bg-card-deep px-2.5 py-0.5 font-medium text-ink-soft transition-colors hover:border-ink-faint hover:text-ink"
+          >
+            {p.name}
+          </a>
+        ),
+      )}
+      {extra > 0 && (
+        <a
+          href={active.link}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-full px-1.5 py-0.5 text-ink-faint hover:text-ink"
+        >
+          +{extra} more
+        </a>
+      )}
+      <span className="ml-auto">
+        <Select
+          value={active.code}
+          onChange={(e) => setCountry(e.target.value)}
+          className="w-auto border-none bg-transparent py-0.5 pl-1.5 pr-7 text-[12px] text-ink-faint hover:text-ink"
+          aria-label="Country"
+        >
+          {data.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+      </span>
+    </div>
+  )
+}
 
 /** Type-specific metadata fields exposed in the edit dialog. */
 const META_FIELDS: Record<ItemType, Array<{ key: string; label: string }>> = {
@@ -36,8 +157,14 @@ const META_FIELDS: Record<ItemType, Array<{ key: string; label: string }>> = {
     { key: 'address', label: 'Address' },
     { key: 'price', label: 'Price' },
   ],
-  movie: [{ key: 'year', label: 'Year' }],
-  tv: [{ key: 'year', label: 'Year' }],
+  movie: [
+    { key: 'year', label: 'Year' },
+    { key: 'genre', label: 'Genre' },
+  ],
+  tv: [
+    { key: 'year', label: 'Year' },
+    { key: 'genre', label: 'Genre' },
+  ],
   book: [
     { key: 'author', label: 'Author' },
     { key: 'year', label: 'Year' },
@@ -111,6 +238,7 @@ function EditItemDialog({
             onChange={(e) => setTitle(e.target.value)}
             required
             autoFocus
+            data-autofocus=""
           />
         </Field>
 
@@ -402,7 +530,7 @@ export function ItemCard({
 
   const done = item.status === 'done'
   const abandoned = item.status === 'abandoned'
-  const groupLabel = item.metadata?.group.trim()
+  const groupLabel = item.metadata?.group?.trim()
   const coords = itemCoords(item.metadata)
   const directionsUrl = coords
     ? mapsDirectionsUrl(coords.lat, coords.lng, item.title)
@@ -411,6 +539,7 @@ export function ItemCard({
   const otherReactors = reactions?.filter((r) => r.userId !== myUserId) ?? []
   const subtitle = [
     item.metadata?.year,
+    item.metadata?.genre,
     item.metadata?.author,
     item.metadata?.address,
     item.metadata?.rating && `★ ${item.metadata.rating}`,
@@ -419,6 +548,10 @@ export function ItemCard({
     .filter(Boolean)
     .join(' · ')
   const addedByName = memberNames.get(item.addedBy)
+  const tmdbId = item.metadata?.tmdbId?.trim()
+  const tmdbKind = item.metadata?.tmdbKind?.trim()
+  const showWatch =
+    !!tmdbId && (tmdbKind === 'movie' || tmdbKind === 'tv')
 
   if (compact) {
     const meta = [subtitle, item.notes].filter(Boolean).join(' · ')
@@ -588,9 +721,9 @@ export function ItemCard({
                 done && 'line-through decoration-1 decoration-ink-faint',
               )}
             >
-              {item.link ? (
+              {safeHttpUrl(item.link) ? (
                 <a
-                  href={item.link}
+                  href={safeHttpUrl(item.link)}
                   target="_blank"
                   rel="noreferrer"
                   className="hover:underline underline-offset-2"
@@ -691,6 +824,10 @@ export function ItemCard({
           >
             {item.notes || 'Add a note…'}
           </button>
+        )}
+
+        {showWatch && (
+          <WatchWhere tmdbId={tmdbId!} kind={tmdbKind as 'movie' | 'tv'} />
         )}
 
         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">

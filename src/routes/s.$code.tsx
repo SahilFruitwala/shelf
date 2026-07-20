@@ -1,15 +1,20 @@
 import { useMemo, useSyncExternalStore } from 'react'
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, redirect } from '@tanstack/react-router'
 import { Compass, ExternalLink, MapPin } from 'lucide-react'
 
 import type { MapPinItem } from '#/components/trip-map'
 import { TripMapPanel } from '#/components/trip-map-panel'
+import { WatchWhere } from '#/components/item-card'
 import { CATEGORIES, LIST_TYPE_CONFIG, statusLabel } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
-import { cn, itemCoords, mapsDirectionsUrl } from '#/lib/utils'
+import { cn, itemCoords, mapsDirectionsUrl, safeHttpUrl } from '#/lib/utils'
+import { features } from '#/lib/features'
 import { getPublicList } from '#/server/lists'
 
 export const Route = createFileRoute('/s/$code')({
+  beforeLoad: () => {
+    if (!features.sharing) throw redirect({ to: '/' })
+  },
   loader: ({ params }) => getPublicList({ data: params.code }),
   component: PublicShelfPage,
 })
@@ -37,9 +42,10 @@ function PublicItemCard({ item }: { item: PublicItem }) {
   const Icon = config.icon
   const done = item.status === 'done'
   const coords = itemCoords(item.metadata)
-  const groupLabel = item.metadata?.group.trim()
+  const groupLabel = item.metadata?.group?.trim()
   const subtitle = [
     item.metadata?.year,
+    item.metadata?.genre,
     item.metadata?.author,
     item.metadata?.address,
     item.metadata?.rating && `★ ${item.metadata.rating}`,
@@ -47,6 +53,9 @@ function PublicItemCard({ item }: { item: PublicItem }) {
   ]
     .filter(Boolean)
     .join(' · ')
+  const tmdbId = item.metadata?.tmdbId?.trim()
+  const tmdbKind = item.metadata?.tmdbKind?.trim()
+  const showWatch = !!tmdbId && (tmdbKind === 'movie' || tmdbKind === 'tv')
 
   return (
     <article
@@ -75,9 +84,9 @@ function PublicItemCard({ item }: { item: PublicItem }) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="font-display text-[17px] font-semibold leading-snug">
-              {item.link ? (
+              {safeHttpUrl(item.link) ? (
                 <a
-                  href={item.link}
+                  href={safeHttpUrl(item.link)}
                   target="_blank"
                   rel="noreferrer"
                   className="hover:underline underline-offset-2"
@@ -97,6 +106,9 @@ function PublicItemCard({ item }: { item: PublicItem }) {
               )}
               {subtitle}
             </p>
+            {showWatch && (
+              <WatchWhere tmdbId={tmdbId!} kind={tmdbKind as 'movie' | 'tv'} />
+            )}
             {coords && (
               <a
                 href={mapsDirectionsUrl(coords.lat, coords.lng, item.title)}
@@ -136,14 +148,14 @@ function PublicShelfContent({ list }: { list: PublicList }) {
   const isDark = useIsDark()
   const tripShelf = isTripShelf(list.type)
   const multiShelf = isMultiTypeShelf(list.type)
-  const hasGroups = list.items.some((i) => i.metadata?.group.trim())
+  const hasGroups = list.items.some((i) => i.metadata?.group?.trim())
   const showItinerary = tripShelf || (multiShelf && hasGroups)
 
   const tripGroups = useMemo(() => {
     if (!showItinerary) return null
     const groups = new Map<string, Array<PublicItem>>()
     for (const item of list.items) {
-      const key = item.metadata?.group.trim() || 'Unscheduled'
+      const key = item.metadata?.group?.trim() || 'Unscheduled'
       const arr = groups.get(key) ?? []
       arr.push(item)
       groups.set(key, arr)
@@ -276,7 +288,7 @@ function PublicShelfPage() {
       <header className="mb-2 flex items-center justify-between border-b border-line py-3 sm:py-4">
         <Link to="/" className="font-display text-[22px] font-bold">
           Shelf
-          <span className="text-accent">.</span>
+          <span className="text-cat-restaurant">.</span>
         </Link>
       </header>
 

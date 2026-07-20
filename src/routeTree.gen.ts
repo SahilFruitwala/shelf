@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
@@ -20,6 +21,11 @@ import { Route as AppNotesNoteIdRouteImport } from './routes/_app.notes.$noteId'
 import { Route as AppListListIdRouteImport } from './routes/_app.list.$listId'
 import { Route as AppJoinCodeRouteImport } from './routes/_app.join.$code'
 
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -73,6 +79,7 @@ const AppJoinCodeRoute = AppJoinCodeRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/welcome': typeof WelcomeRoute
   '/notes': typeof AppNotesRouteWithChildren
   '/s/$code': typeof SCodeRoute
   '/join/$code': typeof AppJoinCodeRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/welcome': typeof WelcomeRoute
   '/s/$code': typeof SCodeRoute
   '/': typeof AppIndexRoute
   '/join/$code': typeof AppJoinCodeRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/welcome': typeof WelcomeRoute
   '/_app/notes': typeof AppNotesRouteWithChildren
   '/s/$code': typeof SCodeRoute
   '/_app/': typeof AppIndexRoute
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/welcome'
     | '/notes'
     | '/s/$code'
     | '/join/$code'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/welcome'
     | '/s/$code'
     | '/'
     | '/join/$code'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/login'
+    | '/welcome'
     | '/_app/notes'
     | '/s/$code'
     | '/_app/'
@@ -143,12 +155,20 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  WelcomeRoute: typeof WelcomeRoute
   SCodeRoute: typeof SCodeRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -255,6 +275,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  WelcomeRoute: WelcomeRoute,
   SCodeRoute: SCodeRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }

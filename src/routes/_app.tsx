@@ -11,12 +11,15 @@ import { LogOut, NotebookPen } from 'lucide-react'
 import { authClient } from '#/lib/auth-client'
 import { getSessionUser } from '#/server/auth'
 import { ThemeToggle } from '#/components/theme-toggle'
+import { features } from '#/lib/features'
 import { cn } from '#/lib/utils'
 
 export const Route = createFileRoute('/_app')({
   beforeLoad: async ({ location }) => {
     const user = await getSessionUser()
     if (!user) {
+      // Bare visits get the landing page; deep links go to login and bounce back.
+      if (location.pathname === '/') throw redirect({ to: '/welcome' })
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
     return { user }
@@ -35,22 +38,24 @@ function AppLayout() {
         <div className="flex items-center gap-4">
           <Link to="/" className="font-display text-[22px] font-bold">
             Shelf
-            <span className="text-accent">.</span>
+            <span className="text-cat-restaurant">.</span>
           </Link>
-          <nav className="flex items-center gap-1">
-            <Link
-              to="/notes"
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-                onNotes
-                  ? 'bg-accent-soft text-accent'
-                  : 'text-ink-soft hover:bg-card-deep hover:text-ink',
-              )}
-            >
-              <NotebookPen className="size-3.5" />
-              Notes
-            </Link>
-          </nav>
+          {features.notes && (
+            <nav className="flex items-center gap-1">
+              <Link
+                to="/notes"
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+                  onNotes
+                    ? 'bg-card-deep text-ink'
+                    : 'text-ink-soft hover:bg-card-deep hover:text-ink',
+                )}
+              >
+                <NotebookPen className="size-3.5" />
+                Notes
+              </Link>
+            </nav>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />

@@ -19,9 +19,10 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-(--radius-control) px-4 py-2.5 text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50',
+        'inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50',
+        // Ink CTA, matching the landing page's "Start your shelves" button.
         variant === 'primary' &&
-          'bg-accent text-accent-ink shadow-[0_0_14px_-4px_var(--accent)] hover:shadow-[0_0_22px_-4px_var(--accent)] active:scale-[0.98]',
+          'bg-ink text-bg hover:-translate-y-px active:scale-[0.98]',
         variant === 'quiet' &&
           'border border-line bg-card-deep text-ink hover:border-ink-faint',
         variant === 'ghost' &&
@@ -100,9 +101,13 @@ export function Hint({
   dismissKey?: string
   className?: string
 }) {
-  const [dismissed, setDismissed] = useState(
-    () => dismissKey != null && localStorage.getItem(dismissKey) === '1',
-  )
+  // Start visible so the server render (no localStorage) matches hydration,
+  // then hide after mount if the user dismissed it before.
+  const [dismissed, setDismissed] = useState(false)
+  useEffect(() => {
+    if (dismissKey != null && localStorage.getItem(dismissKey) === '1')
+      setDismissed(true)
+  }, [dismissKey])
   if (dismissed) return null
   return (
     <div
@@ -150,11 +155,10 @@ export function Modal({
     if (open && !dialog.open) {
       dialog.showModal()
       // showModal() focuses the first focusable element (the close button).
-      // Defer to the input marked with autoFocus instead.
+      // Defer to the field marked data-autofocus instead. (React's autoFocus
+      // prop never reaches the DOM, so it can't be queried here.)
       requestAnimationFrame(() => {
-        dialog
-          .querySelector<HTMLElement>('input[autofocus], textarea[autofocus]')
-          ?.focus()
+        dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus()
       })
     }
     if (!open && dialog.open) dialog.close()
@@ -169,21 +173,27 @@ export function Modal({
         if (e.target === ref.current) onClose()
       }}
       className={cn(
-        'glow-card m-auto w-[calc(100vw-2rem)] rounded-(--radius-card) p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm open:animate-in open:fade-in open:zoom-in-95 open:duration-150',
+        // Cap to the viewport (min-h-0 lets the body scroll region shrink) so
+        // long forms never overflow off-screen on phones.
+        // `open:flex` (not bare `flex`) so a CLOSED dialog keeps the browser's
+        // default display:none — otherwise every mounted-but-closed dialog
+        // would render inline. min-h-0 lets the body scroll region shrink.
+        'glow-card m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] flex-col rounded-(--radius-card) p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm open:flex open:animate-in open:fade-in open:zoom-in-95 open:duration-150 sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)]',
         wide ? 'max-w-xl' : 'max-w-md',
       )}
     >
-      <div className="p-5 sm:p-6">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 className="font-display text-xl font-semibold">{title}</h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="cursor-pointer rounded-full p-1.5 text-ink-faint hover:bg-card-deep hover:text-ink"
-          >
-            <X className="size-4.5" />
-          </button>
-        </div>
+      {/* Pinned header — stays visible while the body below scrolls. */}
+      <div className="flex items-center justify-between gap-4 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
+        <h2 className="text-hero font-display text-xl font-semibold">{title}</h2>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="shrink-0 cursor-pointer rounded-full p-1.5 text-ink-faint hover:bg-card-deep hover:text-ink"
+        >
+          <X className="size-4.5" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 sm:px-6 sm:pb-6">
         {children}
       </div>
     </dialog>
