@@ -150,18 +150,20 @@ function SearchPicker({
       )}
 
       {isTmdb && (
-        <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-faint">
-          This product uses the{' '}
+        <div className="mt-3 flex items-center justify-center gap-2 text-[11px] leading-relaxed text-ink-faint">
           <a
             href="https://www.themoviedb.org/"
             target="_blank"
             rel="noreferrer"
-            className="underline"
+            aria-label="The Movie Database"
           >
-            TMDB
-          </a>{' '}
-          API but is not endorsed or certified by TMDB.
-        </p>
+            <img src="/tmdb.svg" alt="TMDB" className="h-3.5 w-auto" />
+          </a>
+          <span>
+            This product uses the TMDB API but is not endorsed or certified by
+            TMDB.
+          </span>
+        </div>
       )}
     </div>
   )
