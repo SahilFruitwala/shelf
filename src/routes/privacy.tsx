@@ -115,7 +115,16 @@ function PrivacyPage() {
               <li>
                 <strong className="text-ink">Google Places / Maps</strong> —
                 restaurant and place lookups, and resolving pasted Google Maps
-                links.
+                links. See{' '}
+                <a
+                  className="text-ink underline"
+                  href="https://policies.google.com/privacy"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Google’s Privacy Policy
+                </a>
+                .
               </li>
               <li>
                 <strong className="text-ink">Link previews</strong> — for

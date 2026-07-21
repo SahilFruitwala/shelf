@@ -53,6 +53,8 @@ function SearchPicker({
   }, [])
   const isPlaces =
     config.lookup === 'places' || config.lookup === 'places-restaurant'
+  const isTmdb =
+    config.lookup === 'tmdb-movie' || config.lookup === 'tmdb-tv'
 
   const results = useQuery({
     queryKey: ['lookup', config.lookup, debouncedQuery],
@@ -144,6 +146,21 @@ function SearchPicker({
       {results.data?.length === 0 && !results.isFetching && (
         <p className="py-6 text-center text-sm text-ink-faint">
           Nothing found — add it manually below
+        </p>
+      )}
+
+      {isTmdb && (
+        <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-faint">
+          This product uses the{' '}
+          <a
+            href="https://www.themoviedb.org/"
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            TMDB
+          </a>{' '}
+          API but is not endorsed or certified by TMDB.
         </p>
       )}
     </div>
