@@ -7,8 +7,10 @@ import { getSessionUser } from '#/server/auth'
 import { Spotlight } from '#/components/aceternity'
 import { ThemeToggle } from '#/components/theme-toggle'
 import { Button, Field, Input } from '#/components/ui'
+import { seo } from '#/lib/seo'
 
 export const Route = createFileRoute('/login')({
+  head: () => ({ meta: seo({ title: 'Sign in', noindex: true }) }),
   validateSearch: (search: Record<string, unknown>) => ({
     redirect: typeof search.redirect === 'string' ? search.redirect : undefined,
   }),

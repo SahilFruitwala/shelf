@@ -13,8 +13,10 @@ import { getSessionUser } from '#/server/auth'
 import { ThemeToggle } from '#/components/theme-toggle'
 import { features } from '#/lib/features'
 import { cn } from '#/lib/utils'
+import { seo } from '#/lib/seo'
 
 export const Route = createFileRoute('/_app')({
+  head: () => ({ meta: seo({ noindex: true }) }),
   beforeLoad: async ({ location }) => {
     const user = await getSessionUser()
     if (!user) {

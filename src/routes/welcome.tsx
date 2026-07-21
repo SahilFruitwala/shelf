@@ -6,8 +6,18 @@ import type { CSSProperties } from 'react'
 import { getSessionUser } from '#/server/auth'
 import { ThemeToggle } from '#/components/theme-toggle'
 import { cn } from '#/lib/utils'
+import { canonical, seo } from '#/lib/seo'
 
 export const Route = createFileRoute('/welcome')({
+  head: () => ({
+    meta: seo({
+      title: 'Save every recommendation',
+      description:
+        'Restaurants, movies, books, places and gift ideas — filed the moment you hear about them, on your own or shared with people you invite.',
+      path: '/welcome',
+    }),
+    links: [canonical('/welcome')],
+  }),
   beforeLoad: async () => {
     const user = await getSessionUser()
     if (user) throw redirect({ to: '/' })
@@ -188,6 +198,12 @@ function LandingPage() {
               Create your account
             </Link>
           </section>
+
+          <footer className="mt-16 text-center text-[13px] text-ink-faint">
+            <Link to="/privacy" className="underline hover:text-ink-soft">
+              Privacy Policy
+            </Link>
+          </footer>
         </main>
       </div>
     </MotionConfig>

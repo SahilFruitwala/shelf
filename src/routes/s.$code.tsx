@@ -10,8 +10,11 @@ import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
 import { cn, itemCoords, mapsDirectionsUrl, safeHttpUrl } from '#/lib/utils'
 import { features } from '#/lib/features'
 import { getPublicList } from '#/server/lists'
+import { seo } from '#/lib/seo'
 
 export const Route = createFileRoute('/s/$code')({
+  // Share links are unguessable and private — keep them out of search indexes.
+  head: () => ({ meta: seo({ noindex: true }) }),
   beforeLoad: () => {
     if (!features.sharing) throw redirect({ to: '/' })
   },
