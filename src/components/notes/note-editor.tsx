@@ -215,7 +215,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
     return (
       <div className="space-y-3 py-8">
         <p className="text-sm text-danger">{decryptError}</p>
-        <Button variant="outline" onClick={lock}>
+        <Button variant="quiet" onClick={lock}>
           Lock vault
         </Button>
       </div>
@@ -274,7 +274,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
               Preview
             </button>
           </div>
-          <Button variant="outline" onClick={lock}>
+          <Button variant="quiet" onClick={lock}>
             <Lock className="size-4" />
             Lock
           </Button>

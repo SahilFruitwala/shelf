@@ -535,6 +535,41 @@ function decodeEntities(s: string) {
     .replace(/&#x27;/gi, "'")
 }
 
+// A real browser User-Agent (plus friends). Retailers like Amazon serve a
+// robot/CAPTCHA page — stripped of OG tags — to anything that looks like a bot,
+// so we ask for the page the way a browser would.
+const BROWSER_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  Accept:
+    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+}
+
+/** Amazon rarely exposes OG tags; pull title/image straight from its DOM. */
+function amazonFallback(html: string): { title?: string; imageUrl?: string } {
+  const title = html
+    .match(/<span[^>]+id=["']productTitle["'][^>]*>([^<]+)<\/span>/i)?.[1]
+    ?.trim()
+
+  // The main image carries a full-res URL in data-old-hires, or a JSON map of
+  // srcset-style URLs in data-a-dynamic-image (first key is the largest).
+  let imageUrl = html.match(
+    /id=["']landingImage["'][^>]*\bdata-old-hires=["']([^"']+)["']/i,
+  )?.[1]
+  if (!imageUrl) {
+    const dynamic = html.match(
+      /id=["']landingImage["'][^>]*\bdata-a-dynamic-image=["']([^"']+)["']/i,
+    )?.[1]
+    if (dynamic) {
+      // The attribute is HTML-encoded JSON: {"https://...jpg":[500,500],...}
+      imageUrl = decodeEntities(dynamic).match(/"(https?:\/\/[^"]+)"/)?.[1]
+    }
+  }
+
+  return { title: title ? decodeEntities(title) : undefined, imageUrl }
+}
+
 export const fetchLinkPreview = createServerFn({ method: 'GET' })
   .validator((url: string) => {
     const parsed = new URL(url) // throws on garbage
@@ -549,11 +584,7 @@ export const fetchLinkPreview = createServerFn({ method: 'GET' })
     let res: Response
     try {
       res = await safeFetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (compatible; ShelfBot/1.0; +https://shelf.app)',
-          Accept: 'text/html',
-        },
+        headers: BROWSER_HEADERS,
         signal: AbortSignal.timeout(8000),
       })
     } catch {
@@ -563,9 +594,18 @@ export const fetchLinkPreview = createServerFn({ method: 'GET' })
 
     const html = (await res.text()).slice(0, 500_000)
 
-    const title =
+    let title =
       extractMeta(html, 'og:title') ??
       html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim()
+    let imageUrl = extractMeta(html, 'og:image')
+
+    // Amazon (and lookalikes) often ship no usable OG tags — read their DOM.
+    if ((!title || !imageUrl) && /(^|\.)amazon\./i.test(new URL(url).hostname)) {
+      const fallback = amazonFallback(html)
+      title = title ?? fallback.title
+      imageUrl = imageUrl ?? fallback.imageUrl
+    }
+
     if (!title) return null
 
     const metadata: Record<string, string> = {}
@@ -576,7 +616,7 @@ export const fetchLinkPreview = createServerFn({ method: 'GET' })
 
     return {
       title: decodeEntities(title),
-      imageUrl: extractMeta(html, 'og:image'),
+      imageUrl,
       link: url,
       metadata,
     }
