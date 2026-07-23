@@ -4,7 +4,7 @@ export async function getDb() {
   return db
 }
 
-export async function getAuth() {
-  const { auth } = await import('#/lib/auth.server')
-  return auth
+export async function getAuthUser() {
+  const { getAuthUser } = await import('#/lib/auth.server')
+  return getAuthUser()
 }

@@ -1,18 +1,15 @@
-import { getRequest } from '@tanstack/react-start/server'
 import { and, eq } from 'drizzle-orm'
 
 import { ITEM_TYPES, activity, listMembers, lists } from '#/db/schema'
 import type { ActivityAction, ItemType } from '#/db/schema'
-import { getAuth, getDb } from './db-access'
+import { getAuthUser, getDb } from './db-access'
 
 export async function requireUser() {
-  const { headers } = getRequest()
-  const auth = await getAuth()
-  const session = await auth.api.getSession({ headers })
-  if (!session?.user) {
+  const user = await getAuthUser()
+  if (!user) {
     throw new Error('Not signed in')
   }
-  return session.user
+  return user
 }
 
 export async function requireMembership(listId: string, userId: string) {

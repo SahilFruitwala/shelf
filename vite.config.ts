@@ -9,6 +9,11 @@ import { nitro } from 'nitro/vite'
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
+  // Allow the dev server to be reached through an ngrok tunnel (for testing
+  // inbound webhooks). Vite otherwise 403s any Host it doesn't recognise.
+  server: {
+    allowedHosts: ['.ngrok-free.app', '.ngrok.app'],
+  },
   ssr: {
     // Only the native-binding packages stay external. @libsql/client/web is
     // pure JS and must be bundled — Vercel's function has no node_modules.

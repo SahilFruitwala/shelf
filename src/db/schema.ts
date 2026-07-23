@@ -9,7 +9,9 @@ import { sql } from 'drizzle-orm'
 
 import type { VaultKdfParams } from '#/lib/crypto/types'
 
-// ---------- better-auth tables ----------
+// ---------- Users ----------
+// Clerk owns authentication; `id` mirrors the Clerk user id and this table is
+// synced from Clerk (see src/lib/auth.server.ts) so the app can join on it.
 
 export const user = sqliteTable('user', {
   id: text('id').primaryKey(),
@@ -25,50 +27,12 @@ export const user = sqliteTable('user', {
   updatedAt: integer('updated_at', { mode: 'timestamp' })
     .notNull()
     .default(sql`(unixepoch())`),
-})
-
-export const session = sqliteTable('session', {
-  id: text('id').primaryKey(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
-  token: text('token').notNull().unique(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-  ipAddress: text('ip_address'),
-  userAgent: text('user_agent'),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-})
-
-export const account = sqliteTable('account', {
-  id: text('id').primaryKey(),
-  accountId: text('account_id').notNull(),
-  providerId: text('provider_id').notNull(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  accessToken: text('access_token'),
-  refreshToken: text('refresh_token'),
-  idToken: text('id_token'),
-  accessTokenExpiresAt: integer('access_token_expires_at', {
-    mode: 'timestamp',
-  }),
-  refreshTokenExpiresAt: integer('refresh_token_expires_at', {
-    mode: 'timestamp',
-  }),
-  scope: text('scope'),
-  password: text('password'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-})
-
-export const verification = sqliteTable('verification', {
-  id: text('id').primaryKey(),
-  identifier: text('identifier').notNull(),
-  value: text('value').notNull(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }),
+  // GDPR soft-delete: when a user deletes their account we mark `deletedAt`
+  // and set `purgeAfter` (deletedAt + retention window). The Clerk user is
+  // removed immediately so they can't sign in, but local rows are kept until
+  // `purgeAfter`, then hard-deleted by scripts/purge-deleted-users.ts.
+  deletedAt: integer('deleted_at', { mode: 'timestamp' }),
+  purgeAfter: integer('purge_after', { mode: 'timestamp' }),
 })
 
 // ---------- Shelf tables ----------

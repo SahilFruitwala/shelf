@@ -6,9 +6,9 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
-import { LogOut, NotebookPen } from 'lucide-react'
+import { LogOut, NotebookPen, Settings } from 'lucide-react'
+import { useClerk } from '@clerk/tanstack-react-start'
 
-import { authClient } from '#/lib/auth-client'
 import { getSessionUser } from '#/server/auth'
 import { ThemeToggle } from '#/components/theme-toggle'
 import { features } from '#/lib/features'
@@ -31,6 +31,7 @@ export const Route = createFileRoute('/_app')({
 
 function AppLayout() {
   const router = useRouter()
+  const { signOut } = useClerk()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const onNotes = pathname.startsWith('/notes')
 
@@ -61,9 +62,19 @@ function AppLayout() {
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
+          <Link
+            to="/settings"
+            aria-label="Settings"
+            className={cn(
+              'rounded-full p-2 text-ink-soft hover:bg-card-deep hover:text-ink',
+              pathname.startsWith('/settings') && 'bg-card-deep text-ink',
+            )}
+          >
+            <Settings className="size-4.5" />
+          </Link>
           <button
             onClick={async () => {
-              await authClient.signOut()
+              await signOut()
               await router.navigate({
                 to: '/login',
                 search: { redirect: undefined },
