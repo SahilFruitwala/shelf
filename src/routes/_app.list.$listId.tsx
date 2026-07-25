@@ -30,7 +30,6 @@ import {
 import type { Item, ItemStatus, ListType } from '#/db/schema'
 import { LIST_TYPE_CONFIG, CATEGORIES } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
-import { features } from '#/lib/features'
 import { cn, existingDayGroups, haversineKm, itemCoords } from '#/lib/utils'
 import { useHotkey } from '#/lib/use-hotkey'
 import {
@@ -314,6 +313,7 @@ function BulkMoveDialog({
 
 function ListPage() {
   const { listId } = Route.useParams()
+  const { userFeatures } = Route.useRouteContext()
   const router = useRouter()
   const queryClient = useQueryClient()
   const { data: list } = useQuery({
@@ -717,7 +717,7 @@ function ListPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {features.sharing && (
+          {userFeatures.sharing && (
             <Button variant="quiet" onClick={() => setSharing(true)}>
               <UserPlus className="size-4" />
               Share
@@ -1146,7 +1146,7 @@ function ListPage() {
         }}
       />
       <ShareDialog
-        open={sharing && features.sharing}
+        open={sharing && userFeatures.sharing}
         onClose={() => setSharing(false)}
         listId={listId}
         joinCode={list.joinCode}

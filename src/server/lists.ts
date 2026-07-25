@@ -12,6 +12,11 @@ import {
 import type { ListType } from '#/db/schema'
 import { getDb } from './db-access'
 import {
+  requireFeature,
+  requireUserWithFeature,
+  userHasFeature,
+} from './features'
+import {
   ensureDefaultShelves,
   logActivity,
   newId,
@@ -241,7 +246,7 @@ export const enableSharing = createServerFn({ method: 'POST' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
     const db = await getDb()
-    const me = await requireUser()
+    const me = await requireUserWithFeature('sharing')
     const membership = await requireMembership(listId, me.id)
     if (membership.role !== 'owner')
       throw new Error('Only the owner can share a list')
@@ -255,7 +260,7 @@ export const disableSharing = createServerFn({ method: 'POST' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
     const db = await getDb()
-    const me = await requireUser()
+    const me = await requireUserWithFeature('sharing')
     const membership = await requireMembership(listId, me.id)
     if (membership.role !== 'owner')
       throw new Error('Only the owner can manage sharing')
@@ -267,7 +272,7 @@ export const enableViewLink = createServerFn({ method: 'POST' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
     const db = await getDb()
-    const me = await requireUser()
+    const me = await requireUserWithFeature('sharing')
     const membership = await requireMembership(listId, me.id)
     if (membership.role !== 'owner')
       throw new Error('Only the owner can share a list')
@@ -281,7 +286,7 @@ export const disableViewLink = createServerFn({ method: 'POST' })
   .validator((listId: string) => listId)
   .handler(async ({ data: listId }) => {
     const db = await getDb()
-    const me = await requireUser()
+    const me = await requireUserWithFeature('sharing')
     const membership = await requireMembership(listId, me.id)
     if (membership.role !== 'owner')
       throw new Error('Only the owner can manage sharing')
@@ -289,7 +294,8 @@ export const disableViewLink = createServerFn({ method: 'POST' })
     await db.update(lists).set({ viewCode: null }).where(eq(lists.id, listId))
   })
 
-/** Public: the read-only view of a shelf, by view code. No auth. */
+/** Public: the read-only view of a shelf, by view code. No auth.
+ *  Only served when the shelf owner still has the sharing feature. */
 export const getPublicList = createServerFn({ method: 'GET' })
   .validator((code: string) => code)
   .handler(async ({ data: code }) => {
@@ -298,6 +304,7 @@ export const getPublicList = createServerFn({ method: 'GET' })
       where: eq(lists.viewCode, code),
     })
     if (!list) return null
+    if (!(await userHasFeature(list.ownerId, 'sharing'))) return null
 
     const [owner, listItems] = await Promise.all([
       db.query.user.findFirst({
@@ -333,6 +340,7 @@ export const previewJoin = createServerFn({ method: 'GET' })
   .handler(async ({ data: code }) => {
     const db = await getDb()
     const me = await requireUser()
+    await requireFeature(me.id, 'sharing')
     const list = await db.query.lists.findFirst({
       where: eq(lists.joinCode, code),
     })
@@ -363,7 +371,7 @@ export const joinList = createServerFn({ method: 'POST' })
   .validator((code: string) => code)
   .handler(async ({ data: code }) => {
     const db = await getDb()
-    const me = await requireUser()
+    const me = await requireUserWithFeature('sharing')
     const list = await db.query.lists.findFirst({
       where: eq(lists.joinCode, code),
     })

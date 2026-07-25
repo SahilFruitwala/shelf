@@ -35,6 +35,26 @@ export const user = sqliteTable('user', {
   purgeAfter: integer('purge_after', { mode: 'timestamp' }),
 })
 
+// ---------- Per-user feature flags ----------
+// Managed in the DB (not env). Insert/update a row to roll a feature out to a
+// user, e.g. `UPDATE user_feature_flags SET sharing = 1 WHERE user_id = …`.
+
+export const FEATURE_FLAGS = ['sharing'] as const
+export type FeatureFlag = (typeof FEATURE_FLAGS)[number]
+
+export const userFeatureFlags = sqliteTable('user_feature_flags', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  // Shared shelves: invite links, view-only links, join.
+  sharing: integer('sharing', { mode: 'boolean' }).notNull().default(false),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+})
+
+export type UserFeatureFlags = typeof userFeatureFlags.$inferSelect
+
 // ---------- Shelf tables ----------
 
 export const ITEM_TYPES = [

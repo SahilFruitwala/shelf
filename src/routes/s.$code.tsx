@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react'
-import { Link, createFileRoute, redirect } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { Compass, ExternalLink, MapPin } from 'lucide-react'
 
 import type { MapPinItem } from '#/components/trip-map'
@@ -8,16 +8,13 @@ import { WatchWhere } from '#/components/item-card'
 import { CATEGORIES, LIST_TYPE_CONFIG, statusLabel } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
 import { cn, itemCoords, mapsDirectionsUrl, safeHttpUrl } from '#/lib/utils'
-import { features } from '#/lib/features'
 import { getPublicList } from '#/server/lists'
 import { seo } from '#/lib/seo'
 
 export const Route = createFileRoute('/s/$code')({
   // Share links are unguessable and private — keep them out of search indexes.
+  // Access is gated server-side: the shelf owner must have the sharing feature.
   head: () => ({ meta: seo({ noindex: true }) }),
-  beforeLoad: () => {
-    if (!features.sharing) throw redirect({ to: '/' })
-  },
   loader: ({ params }) => getPublicList({ data: params.code }),
   component: PublicShelfPage,
 })

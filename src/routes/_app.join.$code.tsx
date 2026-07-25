@@ -5,12 +5,11 @@ import { ArrowLeft } from 'lucide-react'
 import { LIST_TYPE_CONFIG } from '#/lib/categories'
 import { cn } from '#/lib/utils'
 import { joinList, previewJoin } from '#/server/lists'
-import { features } from '#/lib/features'
 import { Button, PageLoading } from '#/components/ui'
 
 export const Route = createFileRoute('/_app/join/$code')({
-  beforeLoad: () => {
-    if (!features.sharing) throw redirect({ to: '/' })
+  beforeLoad: ({ context }) => {
+    if (!context.userFeatures.sharing) throw redirect({ to: '/' })
   },
   component: JoinPage,
 })

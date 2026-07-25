@@ -10,6 +10,7 @@ import { Dumbbell, LogOut, NotebookPen, Settings } from 'lucide-react'
 import { useClerk } from '@clerk/tanstack-react-start'
 
 import { getSessionUser } from '#/server/auth'
+import { getMyFeatures } from '#/server/features'
 import { ThemeToggle } from '#/components/theme-toggle'
 import { features } from '#/lib/features'
 import { cn } from '#/lib/utils'
@@ -24,7 +25,8 @@ export const Route = createFileRoute('/_app')({
       if (location.pathname === '/') throw redirect({ to: '/welcome' })
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
-    return { user }
+    const userFeatures = await getMyFeatures()
+    return { user, userFeatures }
   },
   component: AppLayout,
 })

@@ -1,7 +1,8 @@
 /**
- * Feature flags. Toggle via env vars (build-time, both client & server):
- *   VITE_FEATURE_NOTES=true    → encrypted notebook / notes
- *   VITE_FEATURE_SHARING=true  → shared shelves (invite links, view-only links, join)
+ * Build-time feature flags (env). Prefer per-user DB flags in
+ * `user_feature_flags` for rollouts that should be toggled without redeploying.
+ *
+ *   VITE_FEATURE_NOTES=true  → encrypted notebook / notes
  *
  * Flags default OFF — a feature is only on when its env var is "true" or "1".
  */
@@ -11,5 +12,4 @@ function flag(value: string | undefined): boolean {
 
 export const features = {
   notes: flag(import.meta.env.VITE_FEATURE_NOTES),
-  sharing: flag(import.meta.env.VITE_FEATURE_SHARING),
 } as const
