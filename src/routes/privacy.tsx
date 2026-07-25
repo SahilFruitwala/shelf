@@ -113,6 +113,20 @@ function PrivacyPage() {
                 metadata and cover images.
               </li>
               <li>
+                <strong className="text-ink">free-exercise-db</strong> — open
+                public-domain (Unlicense) exercise names, form photos, and
+                how-to steps, loaded from{' '}
+                <a
+                  className="text-ink underline"
+                  href="https://github.com/yuhonas/free-exercise-db"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  GitHub
+                </a>
+                .
+              </li>
+              <li>
                 <strong className="text-ink">Google Places / Maps</strong> —
                 restaurant and place lookups, and resolving pasted Google Maps
                 links. See{' '}

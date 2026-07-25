@@ -12,7 +12,12 @@ import type { LucideIcon } from 'lucide-react'
 import type { ItemStatus, ItemType, ListType } from '#/db/schema'
 
 export type LookupMode =
-  'tmdb-movie' | 'tmdb-tv' | 'books' | 'places-restaurant' | 'places' | 'url'
+  | 'tmdb-movie'
+  | 'tmdb-tv'
+  | 'books'
+  | 'places-restaurant'
+  | 'places'
+  | 'url'
 
 interface CategoryConfig {
   label: string

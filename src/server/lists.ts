@@ -77,13 +77,17 @@ export const getMyLists = createServerFn({ method: 'GET' }).handler(
 
     // Built-in shelves first in a stable type order, then custom shelves
     // newest-first (the query already ordered by createdAt desc).
+    // Drop rows whose type is no longer in the app (e.g. a retired category).
+    const knownTypes = new Set<string>(LIST_TYPES)
     const typeOrder = new Map(ITEM_TYPES.map((t, i) => [t as string, i]))
-    return result.sort((a, b) => {
-      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
-      if (a.isDefault && b.isDefault)
-        return (typeOrder.get(a.type) ?? 99) - (typeOrder.get(b.type) ?? 99)
-      return 0
-    })
+    return result
+      .filter((r) => knownTypes.has(r.type))
+      .sort((a, b) => {
+        if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
+        if (a.isDefault && b.isDefault)
+          return (typeOrder.get(a.type) ?? 99) - (typeOrder.get(b.type) ?? 99)
+        return 0
+      })
   },
 )
 

@@ -6,7 +6,7 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
-import { LogOut, NotebookPen, Settings } from 'lucide-react'
+import { Dumbbell, LogOut, NotebookPen, Settings } from 'lucide-react'
 import { useClerk } from '@clerk/tanstack-react-start'
 
 import { getSessionUser } from '#/server/auth'
@@ -34,6 +34,7 @@ function AppLayout() {
   const { signOut } = useClerk()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const onNotes = pathname.startsWith('/notes')
+  const onExercises = pathname.startsWith('/exercises')
 
   return (
     <div className="mx-auto min-h-dvh w-full max-w-5xl px-4 pb-24 sm:px-8">
@@ -43,8 +44,20 @@ function AppLayout() {
             Shelf
             <span className="text-cat-restaurant">.</span>
           </Link>
-          {features.notes && (
-            <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-1">
+            <Link
+              to="/exercises"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+                onExercises
+                  ? 'bg-card-deep text-ink'
+                  : 'text-ink-soft hover:bg-card-deep hover:text-ink',
+              )}
+            >
+              <Dumbbell className="size-3.5" />
+              Exercises
+            </Link>
+            {features.notes && (
               <Link
                 to="/notes"
                 className={cn(
@@ -57,8 +70,8 @@ function AppLayout() {
                 <NotebookPen className="size-3.5" />
                 Notes
               </Link>
-            </nav>
-          )}
+            )}
+          </nav>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />

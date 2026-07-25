@@ -352,6 +352,112 @@ export const searchBooks = createServerFn({ method: 'GET' })
     })
   })
 
+// ---------- Exercises via free-exercise-db (public domain) ----------
+
+const EXERCISE_DB_URL =
+  'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json'
+const EXERCISE_IMAGE_BASE =
+  'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/'
+
+interface FreeExercise {
+  id: string
+  name: string
+  force?: string | null
+  level?: string | null
+  mechanic?: string | null
+  equipment?: string | null
+  category?: string | null
+  primaryMuscles?: Array<string>
+  secondaryMuscles?: Array<string>
+  instructions?: Array<string>
+  images?: Array<string>
+}
+
+let exerciseCache: Array<FreeExercise> | null = null
+let exerciseCachePromise: Promise<Array<FreeExercise>> | null = null
+
+async function loadExercises(): Promise<Array<FreeExercise>> {
+  if (exerciseCache) return exerciseCache
+  if (!exerciseCachePromise) {
+    exerciseCachePromise = fetch(EXERCISE_DB_URL)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Exercise lookup failed')
+        const data = (await res.json()) as Array<FreeExercise>
+        exerciseCache = data
+        return data
+      })
+      .catch((err) => {
+        exerciseCachePromise = null
+        throw err
+      })
+  }
+  return exerciseCachePromise
+}
+
+function titleCaseWords(value: string): string {
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+}
+
+/** Full exercise detail for the browse/how-to page (not shelf items). */
+export interface ExerciseDetail {
+  id: string
+  name: string
+  force?: string
+  level?: string
+  mechanic?: string
+  equipment?: string
+  category?: string
+  primaryMuscles: Array<string>
+  secondaryMuscles: Array<string>
+  instructions: Array<string>
+  images: Array<string>
+}
+
+function toExerciseDetail(ex: FreeExercise): ExerciseDetail {
+  return {
+    id: ex.id,
+    name: ex.name,
+    force: ex.force ? titleCaseWords(ex.force) : undefined,
+    level: ex.level ? titleCaseWords(ex.level) : undefined,
+    mechanic: ex.mechanic ? titleCaseWords(ex.mechanic) : undefined,
+    equipment: ex.equipment ? titleCaseWords(ex.equipment) : undefined,
+    category: ex.category ? titleCaseWords(ex.category) : undefined,
+    primaryMuscles: (ex.primaryMuscles ?? []).map(titleCaseWords),
+    secondaryMuscles: (ex.secondaryMuscles ?? []).map(titleCaseWords),
+    instructions: ex.instructions ?? [],
+    images: (ex.images ?? []).map((path) => EXERCISE_IMAGE_BASE + path),
+  }
+}
+
+/** Browse-only search — returns full how-to details, no shelf coupling. */
+export const browseExercises = createServerFn({ method: 'GET' })
+  .validator((query: string) => query)
+  .handler(async ({ data: query }): Promise<Array<ExerciseDetail>> => {
+    await requireUser()
+
+    const q = query.trim().toLowerCase()
+    if (q.length < 2) return []
+
+    const exercises = await loadExercises()
+    const scored: Array<{ score: number; ex: FreeExercise }> = []
+    for (const ex of exercises) {
+      const name = ex.name.toLowerCase()
+      if (!name.includes(q)) continue
+      const score =
+        (name.startsWith(q) ? 0 : 1) * 1000 +
+        name.indexOf(q) * 10 +
+        name.length
+      scored.push({ score, ex })
+    }
+
+    scored.sort((a, b) => a.score - b.score)
+    return scored.slice(0, 12).map(({ ex }) => toExerciseDetail(ex))
+  })
+
 // ---------- Restaurants & places via Google Places API (New) ----------
 
 interface GooglePlace {

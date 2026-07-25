@@ -31,6 +31,7 @@
   --cat-book: #65a30d;
   --cat-place: #0d9488;
   --cat-wishlist: #a16207;
+  --cat-exercise: #0284c7;
   --cat-mixed: #52525b;
   --cat-trip: #4f46e5;
 }
@@ -54,6 +55,7 @@
   --cat-book: #a3e635;
   --cat-place: #2dd4bf;
   --cat-wishlist: #d4a373;
+  --cat-exercise: #38bdf8;
   --cat-mixed: #a1a1aa;
   --cat-trip: #818cf8;
 }
@@ -77,6 +79,7 @@
   --color-cat-book: var(--cat-book);
   --color-cat-place: var(--cat-place);
   --color-cat-wishlist: var(--cat-wishlist);
+  --color-cat-exercise: var(--cat-exercise);
   --color-cat-mixed: var(--cat-mixed);
   --color-cat-trip: var(--cat-trip);
 

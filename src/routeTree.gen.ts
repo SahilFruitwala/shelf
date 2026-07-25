@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppExercisesRouteImport } from './routes/_app.exercises'
 import { Route as AppNotesRouteImport } from './routes/_app.notes'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as SCodeRouteImport } from './routes/s.$code'
@@ -45,6 +46,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppExercisesRoute = AppExercisesRouteImport.update({
+  id: '/exercises',
+  path: '/exercises',
   getParentRoute: () => AppRoute,
 } as any)
 const AppNotesRoute = AppNotesRouteImport.update({
@@ -93,6 +99,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/welcome': typeof WelcomeRoute
+  '/exercises': typeof AppExercisesRoute
   '/notes': typeof AppNotesRouteWithChildren
   '/settings': typeof AppSettingsRoute
   '/s/$code': typeof SCodeRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/welcome': typeof WelcomeRoute
+  '/exercises': typeof AppExercisesRoute
   '/settings': typeof AppSettingsRoute
   '/s/$code': typeof SCodeRoute
   '/': typeof AppIndexRoute
@@ -121,6 +129,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/welcome': typeof WelcomeRoute
+  '/_app/exercises': typeof AppExercisesRoute
   '/_app/notes': typeof AppNotesRouteWithChildren
   '/_app/settings': typeof AppSettingsRoute
   '/s/$code': typeof SCodeRoute
@@ -138,6 +147,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/welcome'
+    | '/exercises'
     | '/notes'
     | '/settings'
     | '/s/$code'
@@ -151,6 +161,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/welcome'
+    | '/exercises'
     | '/settings'
     | '/s/$code'
     | '/'
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/welcome'
+    | '/_app/exercises'
     | '/_app/notes'
     | '/_app/settings'
     | '/s/$code'
@@ -220,6 +232,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/exercises': {
+      id: '/_app/exercises'
+      path: '/exercises'
+      fullPath: '/exercises'
+      preLoaderRoute: typeof AppExercisesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/notes': {
@@ -296,6 +315,7 @@ const AppNotesRouteWithChildren = AppNotesRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppExercisesRoute: typeof AppExercisesRoute
   AppNotesRoute: typeof AppNotesRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -304,6 +324,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppExercisesRoute: AppExercisesRoute,
   AppNotesRoute: AppNotesRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
