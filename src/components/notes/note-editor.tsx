@@ -8,6 +8,7 @@ import { SerialSaveQueue } from '#/lib/serial-save-queue'
 import { deleteNote, getNote, updateNote } from '#/server/notes'
 import { cn } from '#/lib/utils'
 import { Button, Input, Textarea } from '#/components/ui'
+import { NoteEditorSkeleton, SkeletonText } from '#/components/skeletons'
 
 type EditorMode = 'write' | 'preview'
 type NoteDraft = { title: string; content: string }
@@ -18,6 +19,16 @@ const NotePreview = lazy(() =>
     default: module.NotePreview,
   })),
 )
+
+/** Placeholder for the markdown renderer while its chunk downloads. */
+function NotePreviewFallback() {
+  return (
+    <div role="status" aria-busy="true">
+      <span className="sr-only">Loading preview</span>
+      <SkeletonText lines={6} />
+    </div>
+  )
+}
 
 export function NoteEditor({ noteId }: { noteId: string }) {
   const { masterKey, lock } = useVault()
@@ -223,7 +234,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
   }
 
   if (noteQuery.isLoading || !loaded) {
-    return <p className="text-sm text-ink-soft">Decrypting note…</p>
+    return <NoteEditorSkeleton />
   }
 
   return (
@@ -315,9 +326,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
           className="min-h-[60vh] font-mono text-sm leading-relaxed"
         />
       ) : (
-        <Suspense
-          fallback={<p className="text-sm text-ink-soft">Loading preview…</p>}
-        >
+        <Suspense fallback={<NotePreviewFallback />}>
           <NotePreview content={content} />
         </Suspense>
       )}

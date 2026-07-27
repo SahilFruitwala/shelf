@@ -43,6 +43,8 @@ export function ActivityFeed({ myUserId }: { myUserId?: string }) {
     queryFn: () => getRecentActivity(),
   })
 
+  // No skeleton here on purpose: an empty feed renders nothing, so a
+  // placeholder would promise content that never arrives.
   if (events.length === 0) return null
 
   return (

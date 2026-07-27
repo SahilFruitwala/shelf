@@ -56,10 +56,10 @@ import {
   Hint,
   Input,
   Modal,
-  PageLoading,
   Select,
   Spinner,
 } from '#/components/ui'
+import { ListPageSkeleton } from '#/components/skeletons'
 
 export const Route = createFileRoute('/_app/list/$listId')({
   loader: async ({ context, params }) => {
@@ -69,6 +69,7 @@ export const Route = createFileRoute('/_app/list/$listId')({
     })
   },
   component: ListPage,
+  pendingComponent: ListPageSkeleton,
 })
 
 type StatusFilter = ItemStatus | 'all'
@@ -436,7 +437,7 @@ function ListPage() {
   })
 
   if (!list) {
-    return <PageLoading label="Loading shelf…" />
+    return <ListPageSkeleton />
   }
 
   const config = LIST_TYPE_CONFIG[list.type]

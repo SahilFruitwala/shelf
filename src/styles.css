@@ -177,6 +177,13 @@ body {
   color: var(--accent-ink);
 }
 
+/* Loading skeletons. A tint of the foreground rather than a fixed surface
+   colour, so bars stay readable on both `bg` and `card` in either theme —
+   `card-deep` on `card` is only ~1.1:1 in dark mode, i.e. invisible. */
+.skeleton-fill {
+  background: color-mix(in srgb, var(--ink) 13%, transparent);
+}
+
 /* Subtle scrollbars — the default white bar is jarring on dark surfaces. */
 * {
   scrollbar-width: thin;

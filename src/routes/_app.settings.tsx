@@ -4,12 +4,18 @@ import { useQuery } from '@tanstack/react-query'
 import { useClerk } from '@clerk/tanstack-react-start'
 
 import { deleteAccount, getAccountInfo, RETENTION_DAYS } from '#/server/account'
-import { Button, ConfirmDialog, SectionLabel, Skeleton } from '#/components/ui'
+import { Button, ConfirmDialog, SectionLabel } from '#/components/ui'
+import {
+  AccountRowsSkeleton,
+  SettingsPageSkeleton,
+  SkeletonScreen,
+} from '#/components/skeletons'
 import { seo } from '#/lib/seo'
 
 export const Route = createFileRoute('/_app/settings')({
   head: () => ({ meta: seo({ title: 'Settings', noindex: true }) }),
   component: SettingsPage,
+  pendingComponent: SettingsPageSkeleton,
 })
 
 function SettingsPage() {
@@ -53,10 +59,9 @@ function SettingsPage() {
         <SectionLabel>Account</SectionLabel>
         <div className="rounded-(--radius-card) border border-line bg-card px-5 py-4">
           {accountQuery.isPending ? (
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-4 w-56" />
-            </div>
+            <SkeletonScreen label="Loading account details">
+              <AccountRowsSkeleton />
+            </SkeletonScreen>
           ) : (
             <dl className="space-y-3 text-[15px]">
               <div className="flex justify-between gap-4">

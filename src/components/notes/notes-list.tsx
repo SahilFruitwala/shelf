@@ -8,6 +8,7 @@ import { listNotes } from '#/server/notes'
 import { cn, timeAgo } from '#/lib/utils'
 import { CreateNoteButton } from '#/components/notes/create-note-button'
 import { Input } from '#/components/ui'
+import { NoteRowsSkeleton, SkeletonScreen } from '#/components/skeletons'
 
 interface DecryptedNoteSummary {
   id: string
@@ -81,6 +82,9 @@ export function NotesList() {
     }
   }, [masterKey, notesQuery.data])
 
+  // Fetching and decrypting are one wait from the reader's point of view.
+  const busy = notesQuery.isLoading || decrypting
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return decrypted
@@ -119,18 +123,27 @@ export function NotesList() {
         />
       </div>
 
-      {notesQuery.isLoading && (
-        <p className="text-sm text-ink-soft">Loading encrypted notes…</p>
-      )}
-      {notesQuery.isError && (
-        <p className="text-sm text-danger">Could not load notes.</p>
-      )}
-      {decrypting && <p className="text-sm text-ink-soft">Decrypting notes…</p>}
-      {decryptError && <p className="text-sm text-danger">{decryptError}</p>}
+      {busy ? (
+        <SkeletonScreen
+          label={
+            notesQuery.isLoading
+              ? 'Loading encrypted notes'
+              : 'Decrypting notes'
+          }
+        >
+          <NoteRowsSkeleton />
+        </SkeletonScreen>
+      ) : null}
 
-      {!notesQuery.isLoading &&
+      {notesQuery.isError ? (
+        <p className="text-sm text-danger">Could not load notes.</p>
+      ) : null}
+      {decryptError ? (
+        <p className="text-sm text-danger">{decryptError}</p>
+      ) : null}
+
+      {!busy &&
         !notesQuery.isError &&
-        !decrypting &&
         !decryptError &&
         filtered.length === 0 && (
           <div className="rounded-(--radius-card) border border-dashed border-line bg-card/50 px-6 py-12 text-center">

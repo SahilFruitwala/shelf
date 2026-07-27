@@ -26,6 +26,7 @@ import {
   Spinner,
   Textarea,
 } from '#/components/ui'
+import { MediaListSkeleton, SkeletonScreen } from '#/components/skeletons'
 
 function useDebounced(value: string, ms: number) {
   const [debounced, setDebounced] = useState(value)
@@ -53,8 +54,7 @@ function SearchPicker({
   }, [])
   const isPlaces =
     config.lookup === 'places' || config.lookup === 'places-restaurant'
-  const isTmdb =
-    config.lookup === 'tmdb-movie' || config.lookup === 'tmdb-tv'
+  const isTmdb = config.lookup === 'tmdb-movie' || config.lookup === 'tmdb-tv'
 
   const results = useQuery({
     queryKey: ['lookup', config.lookup, debouncedQuery],
@@ -91,11 +91,11 @@ function SearchPicker({
         />
       </div>
 
-      {results.isFetching && (
-        <div className="flex justify-center py-6">
-          <Spinner />
-        </div>
-      )}
+      {results.isFetching ? (
+        <SkeletonScreen label="Searching">
+          <MediaListSkeleton count={3} />
+        </SkeletonScreen>
+      ) : null}
 
       {results.data && results.data.length > 0 && (
         <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto">
@@ -221,11 +221,7 @@ function LinkPicker({
           variant="primary"
           disabled={!url.trim() || fetchPreview.isPending}
         >
-          {fetchPreview.isPending ? (
-            <Spinner className="border-bg" />
-          ) : (
-            'Fetch'
-          )}
+          {fetchPreview.isPending ? <Spinner className="border-bg" /> : 'Fetch'}
         </Button>
       </div>
       <p className="mt-2 text-[13px] text-ink-faint">{config.lookupHint}</p>

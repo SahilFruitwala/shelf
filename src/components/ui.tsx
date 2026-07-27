@@ -265,7 +265,7 @@ export function Skeleton({ className }: { className?: string }) {
     <div
       aria-hidden
       className={cn(
-        'animate-pulse rounded-(--radius-control) bg-card-deep',
+        'skeleton-fill animate-pulse rounded-(--radius-control)',
         className,
       )}
     />

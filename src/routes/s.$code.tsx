@@ -9,6 +9,7 @@ import { CATEGORIES, LIST_TYPE_CONFIG, statusLabel } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
 import { cn, itemCoords, mapsDirectionsUrl, safeHttpUrl } from '#/lib/utils'
 import { getPublicList } from '#/server/lists'
+import { PublicShelfPageSkeleton } from '#/components/skeletons'
 import { seo } from '#/lib/seo'
 
 export const Route = createFileRoute('/s/$code')({
@@ -17,6 +18,7 @@ export const Route = createFileRoute('/s/$code')({
   head: () => ({ meta: seo({ noindex: true }) }),
   loader: ({ params }) => getPublicList({ data: params.code }),
   component: PublicShelfPage,
+  pendingComponent: PublicShelfPageSkeleton,
 })
 
 type PublicList = NonNullable<Awaited<ReturnType<typeof getPublicList>>>

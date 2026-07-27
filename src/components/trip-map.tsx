@@ -136,12 +136,14 @@ export const TripMap = memo(function TripMap({
   if (!mounted) {
     return (
       <div
+        role="status"
+        aria-busy="true"
         className={cn(
-          'flex min-h-[280px] items-center justify-center rounded-(--radius-card) border border-line bg-card-deep text-[14px] text-ink-faint',
+          'skeleton-fill min-h-[280px] animate-pulse rounded-(--radius-card) border border-line',
           className,
         )}
       >
-        Loading map…
+        <span className="sr-only">Loading map</span>
       </div>
     )
   }

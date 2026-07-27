@@ -16,6 +16,11 @@ import { AddItemDialog } from '#/components/add-item'
 import { HoverHighlight } from '#/components/aceternity'
 import { ItemCard } from '#/components/item-card'
 import { Button, Field, Input, Modal, SectionLabel } from '#/components/ui'
+import {
+  ItemGridSkeleton,
+  ShelvesPageSkeleton,
+  SkeletonScreen,
+} from '#/components/skeletons'
 
 export const Route = createFileRoute('/_app/')({
   loader: async ({ context }) => {
@@ -25,6 +30,7 @@ export const Route = createFileRoute('/_app/')({
     })
   },
   component: HomePage,
+  pendingComponent: ShelvesPageSkeleton,
 })
 
 type ListSummary = Awaited<ReturnType<typeof getMyLists>>[number]
@@ -270,7 +276,9 @@ function SearchResults({ query }: { query: string }) {
 
   if (isPending)
     return (
-      <p className="py-12 text-center text-[15px] text-ink-faint">Searching…</p>
+      <SkeletonScreen label={`Searching for ${query}`}>
+        <ItemGridSkeleton count={4} />
+      </SkeletonScreen>
     )
   if (!results || results.length === 0)
     return (
@@ -311,6 +319,8 @@ function DustyShelf() {
     queryFn: () => getDustyItems(),
   })
 
+  // No skeleton here on purpose: this section is usually empty, so a
+  // placeholder would promise content that never arrives.
   if (dusty.length === 0) return null
 
   return (

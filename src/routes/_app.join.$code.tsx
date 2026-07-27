@@ -5,13 +5,15 @@ import { ArrowLeft } from 'lucide-react'
 import { LIST_TYPE_CONFIG } from '#/lib/categories'
 import { cn } from '#/lib/utils'
 import { joinList, previewJoin } from '#/server/lists'
-import { Button, PageLoading } from '#/components/ui'
+import { Button } from '#/components/ui'
+import { JoinPreviewSkeleton } from '#/components/skeletons'
 
 export const Route = createFileRoute('/_app/join/$code')({
   beforeLoad: ({ context }) => {
     if (!context.userFeatures.sharing) throw redirect({ to: '/' })
   },
   component: JoinPage,
+  pendingComponent: JoinPreviewSkeleton,
 })
 
 function JoinPage() {
@@ -34,7 +36,7 @@ function JoinPage() {
     },
   })
 
-  if (preview.isPending) return <PageLoading label="Checking invite…" />
+  if (preview.isPending) return <JoinPreviewSkeleton />
 
   if (!preview.data?.found) {
     return (

@@ -6,10 +6,16 @@ import { ArrowLeft, Dumbbell, Search } from 'lucide-react'
 import { cn } from '#/lib/utils'
 import { browseExercises } from '#/server/lookup'
 import type { ExerciseDetail } from '#/server/lookup'
-import { Input, Spinner } from '#/components/ui'
+import { Input } from '#/components/ui'
+import {
+  ExercisesPageSkeleton,
+  MediaListSkeleton,
+  SkeletonScreen,
+} from '#/components/skeletons'
 
 export const Route = createFileRoute('/_app/exercises')({
   component: ExercisesPage,
+  pendingComponent: ExercisesPageSkeleton,
 })
 
 function useDebounced(value: string, ms: number) {
@@ -40,8 +46,7 @@ function ExerciseCredit() {
         className="underline-offset-2 hover:text-ink-soft hover:underline"
       >
         free-exercise-db
-      </a>
-      {' '}
+      </a>{' '}
       (public domain / Unlicense).
     </p>
   )
@@ -189,11 +194,11 @@ function ExercisesPage() {
         />
       </div>
 
-      {results.isFetching && (
-        <div className="flex justify-center py-10">
-          <Spinner />
-        </div>
-      )}
+      {results.isFetching ? (
+        <SkeletonScreen label={`Searching exercises for ${debouncedQuery}`}>
+          <MediaListSkeleton />
+        </SkeletonScreen>
+      ) : null}
 
       {results.isError && !results.isFetching && (
         <p className="py-10 text-center text-sm text-danger">

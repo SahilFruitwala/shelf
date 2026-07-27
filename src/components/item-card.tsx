@@ -37,6 +37,7 @@ import {
   Select,
   Textarea,
 } from '#/components/ui'
+import { WatchWhereSkeleton } from '#/components/skeletons'
 
 /** Best guess at the viewer's country, for the default where-to-watch region. */
 function guessCountry(): string {
@@ -63,8 +64,7 @@ export function WatchWhere({
   })
   const [country, setCountry] = useState<string | null>(null)
 
-  if (isLoading)
-    return <p className="mt-2 text-[12px] text-ink-faint">Finding where to watch…</p>
+  if (isLoading) return <WatchWhereSkeleton />
   if (isError || !data || data.length === 0)
     return (
       <p className="mt-2 flex items-center gap-1.5 text-[12px] text-ink-faint">
@@ -550,8 +550,7 @@ export function ItemCard({
   const addedByName = memberNames.get(item.addedBy)
   const tmdbId = item.metadata?.tmdbId?.trim()
   const tmdbKind = item.metadata?.tmdbKind?.trim()
-  const showWatch =
-    !!tmdbId && (tmdbKind === 'movie' || tmdbKind === 'tv')
+  const showWatch = !!tmdbId && (tmdbKind === 'movie' || tmdbKind === 'tv')
 
   if (compact) {
     const meta = [subtitle, item.notes].filter(Boolean).join(' · ')
