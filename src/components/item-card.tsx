@@ -38,6 +38,7 @@ import {
   Textarea,
 } from '#/components/ui'
 import { WatchWhereSkeleton } from '#/components/skeletons'
+import { EpisodeToggle, EpisodeTracker } from '#/components/episode-tracker'
 
 /** Best guess at the viewer's country, for the default where-to-watch region. */
 function guessCountry(): string {
@@ -499,6 +500,7 @@ export function ItemCard({
   const [editing, setEditing] = useState(false)
   const [moving, setMoving] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [showEpisodes, setShowEpisodes] = useState(false)
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['list', listId] })
@@ -530,6 +532,9 @@ export function ItemCard({
 
   const done = item.status === 'done'
   const abandoned = item.status === 'abandoned'
+  // Watched films and shows keep their title intact — a struck-through title
+  // reads as "crossed off", which is wrong for something you enjoyed.
+  const strikeWhenDone = item.type !== 'movie' && item.type !== 'tv'
   const groupLabel = item.metadata?.group?.trim()
   const coords = itemCoords(item.metadata)
   const directionsUrl = coords
@@ -537,9 +542,17 @@ export function ItemCard({
     : undefined
   const iReacted = reactions?.some((r) => r.userId === myUserId) ?? false
   const otherReactors = reactions?.filter((r) => r.userId !== myUserId) ?? []
+  // Episode progress rolled up at import time (Trakt) — shows only.
+  const watchedEps =
+    item.type === 'tv' ? item.metadata?.episodesWatched : undefined
+  const totalEps = item.type === 'tv' ? item.metadata?.totalEpisodes : undefined
   const subtitle = [
     item.metadata?.year,
     item.metadata?.genre,
+    watchedEps && `${watchedEps}${totalEps ? `/${totalEps}` : ''} episodes`,
+    item.type === 'tv' &&
+      item.metadata?.lastEpisode &&
+      `last ${item.metadata.lastEpisode}`,
     item.metadata?.author,
     item.metadata?.address,
     item.metadata?.rating && `★ ${item.metadata.rating}`,
@@ -611,7 +624,7 @@ export function ItemCard({
               <h3
                 className={cn(
                   'truncate font-medium text-[15px] leading-snug',
-                  done && 'line-through decoration-ink-faint',
+                  done && strikeWhenDone && 'line-through decoration-ink-faint',
                 )}
               >
                 {item.title}
@@ -717,7 +730,9 @@ export function ItemCard({
             <h3
               className={cn(
                 'font-display text-[17px] font-semibold leading-snug',
-                done && 'line-through decoration-1 decoration-ink-faint',
+                done &&
+                  strikeWhenDone &&
+                  'line-through decoration-1 decoration-ink-faint',
               )}
             >
               {safeHttpUrl(item.link) ? (
@@ -862,6 +877,12 @@ export function ItemCard({
                 {config.toTryLabel}
               </Button>
             )}
+            {item.type === 'tv' && (
+              <EpisodeToggle
+                open={showEpisodes}
+                onToggle={() => setShowEpisodes((v) => !v)}
+              />
+            )}
             {showReactions && item.addedBy !== myUserId && (
               <Button
                 variant="ghost"
@@ -904,6 +925,10 @@ export function ItemCard({
             )}
           </div>
         </div>
+
+        {showEpisodes && item.type === 'tv' && (
+          <EpisodeTracker itemId={item.id} listId={listId} />
+        )}
       </div>
 
       <EditItemDialog

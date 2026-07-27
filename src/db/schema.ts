@@ -143,7 +143,24 @@ export const items = sqliteTable(
       .default(sql`(unixepoch())`),
     completedAt: integer('completed_at', { mode: 'timestamp' }),
   },
-  (t) => [index('items_list_idx').on(t.listId)],
+  (t) => [
+    index('items_list_idx').on(t.listId),
+    index('items_list_status_created_idx').on(
+      t.listId,
+      t.status,
+      t.createdAt,
+      t.id,
+    ),
+    index('items_list_status_title_idx').on(
+      t.listId,
+      t.status,
+      sql`lower(title)`,
+      t.id,
+    ),
+    // `->>` not json_extract(): drizzle-kit splits index expressions on
+    // commas, so the two-arg form is parsed as two bogus columns.
+    index('items_list_genre_idx').on(t.listId, sql`metadata ->> '$.genre'`),
+  ],
 )
 
 export const ACTIVITY_ACTIONS = [
@@ -197,6 +214,34 @@ export const itemReactions = sqliteTable(
     uniqueIndex('item_reactions_item_user_idx').on(t.itemId, t.userId),
   ],
 )
+
+/** Episodes ticked off on a `tv` item. Scoped to the item (not the user) to
+ *  match `items.status`, so a shared shelf tracks one agreed progress. */
+export const watchedEpisodes = sqliteTable(
+  'watched_episodes',
+  {
+    id: text('id').primaryKey(),
+    itemId: text('item_id')
+      .notNull()
+      .references(() => items.id, { onDelete: 'cascade' }),
+    season: integer('season').notNull(),
+    number: integer('number').notNull(),
+    // From the Trakt import where known; otherwise when it was ticked here.
+    watchedAt: integer('watched_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [
+    index('watched_episodes_item_idx').on(t.itemId),
+    uniqueIndex('watched_episodes_item_ep_idx').on(
+      t.itemId,
+      t.season,
+      t.number,
+    ),
+  ],
+)
+
+export type WatchedEpisode = typeof watchedEpisodes.$inferSelect
 
 export type List = typeof lists.$inferSelect
 export type ListMember = typeof listMembers.$inferSelect

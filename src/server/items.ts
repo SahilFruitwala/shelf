@@ -105,6 +105,101 @@ export const findDuplicatesOnShelf = createServerFn({ method: 'GET' })
     return shelfItems.filter((i) => normalizeTitle(i.title) === normalized)
   })
 
+export const ITEM_SORTS = ['recent', 'alpha', 'completed'] as const
+export type ItemSort = (typeof ITEM_SORTS)[number]
+
+const PAGE_SIZE = 24
+const MAX_PAGE_SIZE = 500
+
+/** `%` and `_` are LIKE wildcards — escape them so genres match literally. */
+function likeLiteral(value: string) {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`)
+}
+
+/** One page of a shelf's items, filtered and sorted in SQL.
+ *  Offset-based so the UI can offer numbered pages and jump around. */
+export const getListItems = createServerFn({ method: 'GET' })
+  .validator(
+    (data: {
+      listId: string
+      status?: ItemStatus | 'all'
+      genres?: Array<string>
+      sort?: ItemSort
+      page?: number
+      perPage?: number
+    }) => {
+      if (
+        data.status &&
+        data.status !== 'all' &&
+        !ITEM_STATUSES.includes(data.status)
+      )
+        throw new Error('Unknown status')
+      if (data.sort && !ITEM_SORTS.includes(data.sort))
+        throw new Error('Unknown sort')
+      return data
+    },
+  )
+  .handler(async ({ data }) => {
+    const db = await getDb()
+    const me = await requireUser()
+    await requireMembership(data.listId, me.id)
+
+    const sort = data.sort ?? 'recent'
+    const perPage = Math.min(
+      Math.max(Math.trunc(data.perPage ?? PAGE_SIZE), 1),
+      MAX_PAGE_SIZE,
+    )
+
+    const where = [eq(items.listId, data.listId)]
+    if (data.status && data.status !== 'all')
+      where.push(eq(items.status, data.status))
+
+    // "Action, Comedy" is stored as one string — wrap both sides in the
+    // separator so "Action" can't match inside "Action & Adventure".
+    if (data.genres?.length) {
+      const genreMatches = data.genres.map(
+        (g) =>
+          sql`', ' || coalesce(items.metadata ->> '$.genre', '') || ', ' like ${`%, ${likeLiteral(g)}, %`} escape '\\'`,
+      )
+      where.push(or(...genreMatches)!)
+    }
+
+    const filter = and(...where)
+
+    // The id tiebreaker keeps rows with equal sort keys from drifting between
+    // pages, which OFFSET would otherwise let happen.
+    const orderBy =
+      sort === 'alpha'
+        ? [sql`lower(items.title) asc`, sql`items.id asc`]
+        : sort === 'completed'
+          ? [
+              sql`items.completed_at is null asc`,
+              sql`items.completed_at desc`,
+              sql`items.id desc`,
+            ]
+          : [sql`items.created_at desc`, sql`items.id desc`]
+
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(items)
+      .where(filter)
+
+    const totalPages = Math.max(Math.ceil(total / perPage), 1)
+    // Clamp so a stale page number (filter changed, items removed) still
+    // returns rows instead of an empty page.
+    const page = Math.min(Math.max(Math.trunc(data.page ?? 1), 1), totalPages)
+
+    const rows = await db
+      .select()
+      .from(items)
+      .where(filter)
+      .orderBy(...orderBy)
+      .limit(perPage)
+      .offset((page - 1) * perPage)
+
+    return { items: rows, total, page, perPage, totalPages }
+  })
+
 export const updateItem = createServerFn({ method: 'POST' })
   .validator(
     (data: {
@@ -133,7 +228,9 @@ export const updateItem = createServerFn({ method: 'POST' })
       .set({
         ...(title !== undefined && { title }),
         ...(data.notes !== undefined && { notes: data.notes.trim() || null }),
-        ...(data.link !== undefined && { link: safeHttpUrl(data.link) ?? null }),
+        ...(data.link !== undefined && {
+          link: safeHttpUrl(data.link) ?? null,
+        }),
         ...(data.imageUrl !== undefined && {
           imageUrl: safeHttpUrl(data.imageUrl) ?? null,
         }),

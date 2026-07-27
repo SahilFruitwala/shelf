@@ -37,7 +37,7 @@ function AppLayout() {
   const onExercises = pathname.startsWith('/exercises')
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-5xl px-4 pb-24 sm:px-8">
+    <div className="mx-auto min-h-dvh w-full max-w-5xl px-4 pb-24 sm:px-8 xl:max-w-6xl 2xl:max-w-[90rem]">
       <header className="sticky top-0 z-40 -mx-4 mb-2 flex items-center justify-between border-b border-line bg-bg/80 px-4 py-3 backdrop-blur-md sm:-mx-8 sm:px-8 sm:py-4">
         <div className="flex items-center gap-4">
           <Link to="/" className="font-display text-[22px] font-bold">

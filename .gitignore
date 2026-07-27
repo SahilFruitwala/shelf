@@ -14,5 +14,11 @@ todos.json
 dev.db
 .vercel/
 .pnpm-store
+# Personal Trakt export dumps at the repo root. Anchored with a leading slash
+# so it can't also swallow scripts/trakt-import/, which is tracked.
+/trakt*
+scripts/trakt-import/output
 
-trakt*
+
+*.pyc
+*.py

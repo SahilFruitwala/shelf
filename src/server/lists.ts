@@ -109,12 +109,22 @@ export const getList = createServerFn({ method: 'GET' })
     })
     if (!list) throw new Error('List not found')
 
-    const [listItems, members, reactions] = await Promise.all([
+    // Items themselves come from the paginated getListItems — a shelf can hold
+    // thousands, so only the aggregates the toolbar needs are computed here.
+    const [statusRows, genreRows, members, reactions] = await Promise.all([
       db
-        .select()
+        .select({ status: items.status, count: sql<number>`count(*)` })
         .from(items)
         .where(eq(items.listId, listId))
-        .orderBy(desc(items.createdAt)),
+        .groupBy(items.status),
+      db
+        .selectDistinct({
+          // `->>` (not json_extract) so this hits items_list_genre_idx as a
+          // covering index — the two spellings don't match for the planner.
+          genre: sql<string | null>`items.metadata ->> '$.genre'`,
+        })
+        .from(items)
+        .where(eq(items.listId, listId)),
       db
         .select({
           userId: listMembers.userId,
@@ -127,13 +137,30 @@ export const getList = createServerFn({ method: 'GET' })
       getReactionsForList(listId),
     ])
 
-    const reactionsByItem = Object.fromEntries(reactions)
+    const counts = { all: 0, to_try: 0, done: 0, abandoned: 0 }
+    for (const r of statusRows) {
+      counts[r.status] = r.count
+      counts.all += r.count
+    }
+
+    // Rows are whole "Action, Comedy" strings — split them into a flat set.
+    const genreOptions = [
+      ...new Set(
+        genreRows.flatMap((r) =>
+          (r.genre ?? '')
+            .split(',')
+            .map((g) => g.trim())
+            .filter(Boolean),
+        ),
+      ),
+    ].sort((a, b) => a.localeCompare(b))
 
     return {
       ...list,
-      items: listItems,
+      counts,
+      genreOptions,
       members,
-      reactionsByItem,
+      reactionsByItem: Object.fromEntries(reactions),
       isOwner: list.ownerId === me.id,
       myUserId: me.id,
     }

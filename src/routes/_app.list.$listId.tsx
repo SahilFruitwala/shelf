@@ -5,8 +5,19 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Link,
+  createFileRoute,
+  useNavigate,
+  useRouter,
+} from '@tanstack/react-router'
+import type { SearchSchemaInput } from '@tanstack/react-router'
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   ArrowDownUp,
   Clapperboard,
@@ -15,6 +26,8 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Compass,
   DoorOpen,
   FolderInput,
@@ -27,16 +40,20 @@ import {
   X,
 } from 'lucide-react'
 
+import { ITEM_STATUSES } from '#/db/schema'
 import type { Item, ItemStatus, ListType } from '#/db/schema'
 import { LIST_TYPE_CONFIG, CATEGORIES } from '#/lib/categories'
 import { isMultiTypeShelf, isTripShelf } from '#/lib/list-types'
 import { cn, existingDayGroups, haversineKm, itemCoords } from '#/lib/utils'
 import { useHotkey } from '#/lib/use-hotkey'
 import {
+  ITEM_SORTS,
   bulkDeleteItems,
   bulkMoveItems,
   bulkSetItemStatus,
+  getListItems,
 } from '#/server/items'
+import type { ItemSort } from '#/server/items'
 import {
   deleteList,
   getList,
@@ -59,9 +76,52 @@ import {
   Select,
   Spinner,
 } from '#/components/ui'
-import { ListPageSkeleton } from '#/components/skeletons'
+import { ItemGridSkeleton, ListPageSkeleton } from '#/components/skeletons'
+
+type StatusFilter = ItemStatus | 'all'
+type SortKey = ItemSort | 'near'
+
+/** Shelves open on the watchlist — the things still waiting on you. */
+const DEFAULT_FILTER: StatusFilter = 'to_try'
+
+const STATUS_FILTERS: ReadonlyArray<string> = [
+  'all',
+  ...ITEM_STATUSES,
+] satisfies ReadonlyArray<StatusFilter>
+const SORT_KEYS: ReadonlyArray<string> = [
+  ...ITEM_SORTS,
+  'near',
+] satisfies ReadonlyArray<SortKey>
+
+/** What you're looking at lives in the URL, so a refresh or a shared link
+ *  lands on the same page, filter and sort rather than resetting. */
+interface ListSearch {
+  page: number
+  status: StatusFilter
+  sort: SortKey
+  genres: Array<string>
+}
 
 export const Route = createFileRoute('/_app/list/$listId')({
+  // Input is Partial so every field has a default and plain <Link to="/list/…">
+  // stays valid without spelling out search params.
+  validateSearch: (
+    search: Partial<Record<keyof ListSearch, unknown>> & SearchSchemaInput,
+  ): ListSearch => {
+    const page = Number(search.page)
+    const status = String(search.status)
+    const sort = String(search.sort)
+    return {
+      page: Number.isFinite(page) && page >= 1 ? Math.trunc(page) : 1,
+      status: STATUS_FILTERS.includes(status)
+        ? (status as StatusFilter)
+        : DEFAULT_FILTER,
+      sort: SORT_KEYS.includes(sort) ? (sort as SortKey) : 'recent',
+      genres: Array.isArray(search.genres)
+        ? search.genres.filter((g): g is string => typeof g === 'string')
+        : [],
+    }
+  },
   loader: async ({ context, params }) => {
     await context.queryClient.ensureQueryData({
       queryKey: ['list', params.listId],
@@ -72,8 +132,117 @@ export const Route = createFileRoute('/_app/list/$listId')({
   pendingComponent: ListPageSkeleton,
 })
 
-type StatusFilter = ItemStatus | 'all'
-type SortKey = 'recent' | 'alpha' | 'completed' | 'near'
+const PAGE_SIZE = 24
+/** Big enough that a realistic itinerary or local list arrives in one page. */
+const WHOLE_SHELF_PAGE_SIZE = 500
+
+/** Itinerary and map views need every pin at once, so those shelves load in
+ *  full; media shelves (which run to thousands of rows) get numbered pages. */
+function loadsEverything(type: ListType | undefined) {
+  if (!type) return false
+  return type === 'restaurant' || type === 'place' || isMultiTypeShelf(type)
+}
+
+/** Page numbers with ellipses — always shows first, last and the neighbours. */
+function pageWindow(current: number, total: number): Array<number | 'gap'> {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+
+  const pages = new Set([1, total, current, current - 1, current + 1])
+  if (current <= 3) [2, 3, 4].forEach((p) => pages.add(p))
+  if (current >= total - 2)
+    [total - 3, total - 2, total - 1].forEach((p) => pages.add(p))
+
+  const sorted = [...pages]
+    .filter((p) => p >= 1 && p <= total)
+    .sort((a, b) => a - b)
+  const out: Array<number | 'gap'> = []
+  for (const [i, p] of sorted.entries()) {
+    if (i > 0 && p - sorted[i - 1] > 1) out.push('gap')
+    out.push(p)
+  }
+  return out
+}
+
+function Pagination({
+  page,
+  totalPages,
+  total,
+  onChange,
+}: {
+  page: number
+  totalPages: number
+  total: number
+  onChange: (page: number) => void
+}) {
+  if (totalPages <= 1) return null
+
+  const btn =
+    'inline-flex h-9 min-w-9 cursor-pointer items-center justify-center rounded-(--radius-control) border px-3 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40'
+
+  return (
+    <nav
+      aria-label="Pagination"
+      className="mt-8 flex flex-wrap items-center justify-center gap-1.5"
+    >
+      <button
+        type="button"
+        onClick={() => onChange(page - 1)}
+        disabled={page <= 1}
+        aria-label="Previous page"
+        className={cn(
+          btn,
+          'border-line bg-card-deep text-ink-soft hover:text-ink',
+        )}
+      >
+        <ChevronLeft className="size-4" />
+      </button>
+
+      {pageWindow(page, totalPages).map((p, i) =>
+        p === 'gap' ? (
+          <span
+            key={`gap-${i}`}
+            className="px-1 text-[13px] text-ink-faint"
+            aria-hidden
+          >
+            …
+          </span>
+        ) : (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onChange(p)}
+            aria-current={p === page ? 'page' : undefined}
+            className={cn(
+              btn,
+              p === page
+                ? 'border-ink bg-ink text-bg'
+                : 'border-line bg-card-deep text-ink-soft hover:text-ink',
+            )}
+          >
+            {p}
+          </button>
+        ),
+      )}
+
+      <button
+        type="button"
+        onClick={() => onChange(page + 1)}
+        disabled={page >= totalPages}
+        aria-label="Next page"
+        className={cn(
+          btn,
+          'border-line bg-card-deep text-ink-soft hover:text-ink',
+        )}
+      >
+        <ChevronRight className="size-4" />
+      </button>
+
+      <span className="ml-2 w-full text-center text-[12px] text-ink-faint sm:w-auto">
+        {total.toLocaleString()} items
+      </span>
+    </nav>
+  )
+}
 function useIsDark() {
   return useSyncExternalStore(
     (onStoreChange) => {
@@ -326,10 +495,20 @@ function ListPage() {
   const [sharing, setSharing] = useState(false)
 
   useHotkey('a', () => setAdding(true))
-  const [filter, setFilter] = useState<StatusFilter>('all')
+
+  const { page, status: filter, sort, genres: genreKey } = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+  // Changing what's shown always returns to page 1 — page 7 of the old filter
+  // rarely means anything under the new one.
+  const setSearch = (next: Partial<ListSearch>) =>
+    void navigate({ search: (prev) => ({ ...prev, ...next }) })
+  const setFilter = (status: StatusFilter) => setSearch({ status, page: 1 })
+  const setSort = (next: SortKey) => setSearch({ sort: next, page: 1 })
+  const setPage = (next: number) => setSearch({ page: next })
   // Empty = all genres. An item matches if it has any selected genre.
-  const [genreFilter, setGenreFilter] = useState<Set<string>>(new Set())
-  const [sort, setSort] = useState<SortKey>('recent')
+  const genreFilter = useMemo(() => new Set(genreKey), [genreKey])
+  const setGenreFilter = (next: Set<string>) =>
+    setSearch({ genres: [...next].sort((a, b) => a.localeCompare(b)), page: 1 })
   const [tripView, setTripView] = useState(false)
   const [showMap, setShowMap] = useState(false)
   const [mapFocus, setMapFocus] = useState<{ lat: number; lng: number } | null>(
@@ -353,13 +532,52 @@ function ListPage() {
   )
   const [geoError, setGeoError] = useState<string | null>(null)
 
+  // 'near' is a client-side sort over coordinates, so the server pages by the
+  // nearest equivalent and the distance ordering is applied to what's loaded.
+  const serverSort: ItemSort = sort === 'near' ? 'recent' : sort
+  // Map pins and itineraries only make sense with the whole shelf in hand, so
+  // those types come back in one big page instead of being paged through.
+  const perPage = loadsEverything(list?.type)
+    ? WHOLE_SHELF_PAGE_SIZE
+    : PAGE_SIZE
+
+  const itemsQuery = useQuery({
+    // Nested under ['list', listId] so existing invalidations still reach it.
+    queryKey: [
+      'list',
+      listId,
+      'items',
+      filter,
+      genreKey,
+      serverSort,
+      page,
+      perPage,
+    ],
+    queryFn: () =>
+      getListItems({
+        data: {
+          listId,
+          status: filter,
+          genres: genreKey,
+          sort: serverSort,
+          page,
+          perPage,
+        },
+      }),
+    // Keeps the previous page on screen while the next one loads, so the grid
+    // doesn't collapse to a skeleton on every page change.
+    placeholderData: keepPreviousData,
+  })
+
+  const loadedItems = itemsQuery.data?.items ?? []
+  const totalPages = itemsQuery.data?.totalPages ?? 1
+
   const isGeoShelf =
     list?.type === 'restaurant' ||
     list?.type === 'place' ||
     isTripShelf(list?.type ?? 'restaurant')
-  const hasCoords = list?.items.some((i) => itemCoords(i.metadata)) ?? false
-  const coordsCount =
-    list?.items.filter((i) => itemCoords(i.metadata)).length ?? 0
+  const hasCoords = loadedItems.some((i) => itemCoords(i.metadata))
+  const coordsCount = loadedItems.filter((i) => itemCoords(i.metadata)).length
   const sortOptions = useMemo(() => {
     if (isGeoShelf && hasCoords)
       return [
@@ -370,8 +588,8 @@ function ListPage() {
   }, [isGeoShelf, hasCoords])
   const unscheduledCount = useMemo(() => {
     if (!list || !isMultiTypeShelf(list.type)) return 0
-    return list.items.filter((i) => !i.metadata?.group?.trim()).length
-  }, [list])
+    return loadedItems.filter((i) => !i.metadata?.group?.trim()).length
+  }, [list, loadedItems])
 
   useEffect(() => {
     setTripView(list?.type === 'trip')
@@ -459,34 +677,9 @@ function ListPage() {
     (multiShelf && tripView)
   const showItinerary = tripView && multiShelf
 
-  const counts = {
-    all: list.items.length,
-    to_try: list.items.filter((i) => i.status === 'to_try').length,
-    done: list.items.filter((i) => i.status === 'done').length,
-    abandoned: list.items.filter((i) => i.status === 'abandoned').length,
-  }
-  // Unique genres across the shelf ("Action, Comedy" counts as both).
-  const genreOptions = [
-    ...new Set(
-      list.items.flatMap(
-        (i) => i.metadata?.genre?.split(',').map((g) => g.trim()) ?? [],
-      ),
-    ),
-  ].sort((a, b) => a.localeCompare(b))
-
-  const statusFiltered =
-    filter === 'all'
-      ? list.items
-      : list.items.filter((i) => i.status === filter)
-  const filtered =
-    genreFilter.size > 0
-      ? statusFiltered.filter((i) =>
-          i.metadata?.genre
-            ?.split(',')
-            .map((g) => g.trim())
-            .some((g) => genreFilter.has(g)),
-        )
-      : statusFiltered
+  const { counts, genreOptions } = list
+  // Status, genre and sort are all applied in SQL — these rows are the result.
+  const filtered = loadedItems
 
   const distances = useMemo(() => {
     if (sort !== 'near' || !userPos) return new Map<string, number>()
@@ -503,21 +696,11 @@ function ListPage() {
   }, [filtered, sort, userPos])
 
   const visible = useMemo(() => {
-    if (sort === 'recent') return filtered
-    return [...filtered].sort((a, b) => {
-      if (sort === 'alpha')
-        return a.title.localeCompare(b.title, undefined, {
-          sensitivity: 'base',
-        })
-      if (sort === 'near') {
-        const ad = distances.get(a.id) ?? Infinity
-        const bd = distances.get(b.id) ?? Infinity
-        return ad - bd
-      }
-      const at = a.completedAt?.getTime() ?? 0
-      const bt = b.completedAt?.getTime() ?? 0
-      return bt - at
-    })
+    if (sort !== 'near') return filtered
+    return [...filtered].sort(
+      (a, b) =>
+        (distances.get(a.id) ?? Infinity) - (distances.get(b.id) ?? Infinity),
+    )
   }, [filtered, sort, distances])
 
   const tripGroups = useMemo(() => {
@@ -562,7 +745,7 @@ function ListPage() {
       })
   }, [supportsMap, visible, mapDayFilter])
 
-  const dayGroups = useMemo(() => existingDayGroups(list.items), [list.items])
+  const dayGroups = useMemo(() => existingDayGroups(loadedItems), [loadedItems])
 
   const mapDayOptions = useMemo(() => {
     if (!tripGroups) return []
@@ -579,12 +762,12 @@ function ListPage() {
 
   const geoPinCount = useMemo(
     () =>
-      list.items.filter(
+      loadedItems.filter(
         (i) =>
           (i.type === 'restaurant' || i.type === 'place') &&
           itemCoords(i.metadata),
       ).length,
-    [list.items],
+    [loadedItems],
   )
 
   const mapMode = supportsMap && showMap
@@ -731,7 +914,7 @@ function ListPage() {
         </div>
       </div>
 
-      {list.items.length > 0 && (
+      {counts.all > 0 && (
         <div className="mb-5">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px]">
             <div className="relative">
@@ -840,7 +1023,7 @@ function ListPage() {
         </div>
       )}
 
-      {showReactions && list.items.length > 0 && (
+      {showReactions && counts.all > 0 && (
         <Hint dismissKey="hint-reactions" className="mb-4">
           On a shared shelf, tap{' '}
           <strong className="font-medium text-ink">Nice pick</strong> on someone
@@ -930,11 +1113,11 @@ function ListPage() {
       {sort === 'near' && userPos && (
         <Hint dismissKey="hint-near" className="mb-4">
           Sorted by distance from you. Only places added via search or Maps
-          links have locations ({coordsCount} of {list.items.length}).
+          links have locations ({coordsCount} of {counts.all}).
         </Hint>
       )}
 
-      {isGeoShelf && !hasCoords && list.items.length > 0 && sort !== 'near' && (
+      {isGeoShelf && !hasCoords && counts.all > 0 && sort !== 'near' && (
         <Hint dismissKey="hint-near-missing" className="mb-4">
           Want <strong className="font-medium text-ink">nearest first</strong>{' '}
           sorting? Add restaurants via search or paste a Google Maps link so we
@@ -942,7 +1125,7 @@ function ListPage() {
         </Hint>
       )}
 
-      {list.items.length === 0 ? (
+      {counts.all === 0 ? (
         <div className="glow-card rounded-(--radius-card) px-6 py-16 text-center">
           <p className="font-display text-2xl font-semibold">
             Nothing here yet
@@ -960,6 +1143,8 @@ function ListPage() {
             Add the first one
           </Button>
         </div>
+      ) : itemsQuery.isPending ? (
+        <ItemGridSkeleton />
       ) : visible.length === 0 ? (
         <p className="py-12 text-center text-[15px] text-ink-faint">
           Nothing matches this filter.
@@ -997,7 +1182,7 @@ function ListPage() {
                         these in.
                       </p>
                     )}
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                       {group.items.map(renderItem)}
                     </div>
                   </section>
@@ -1024,11 +1209,25 @@ function ListPage() {
               <div
                 className={cn(
                   'grid gap-2',
-                  mapMode ? 'grid-cols-1' : 'grid-cols-1 gap-3 lg:grid-cols-2',
+                  mapMode
+                    ? 'grid-cols-1'
+                    : 'grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3',
                 )}
               >
                 {(mapMode ? mapListItems : visible).map(renderItem)}
               </div>
+            )}
+
+            {!mapMode && (
+              <Pagination
+                page={itemsQuery.data?.page ?? 1}
+                totalPages={totalPages}
+                total={itemsQuery.data?.total ?? 0}
+                onChange={(next) => {
+                  setPage(next)
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+              />
             )}
           </div>
           {mapMode && (
