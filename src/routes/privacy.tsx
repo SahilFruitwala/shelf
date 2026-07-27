@@ -67,13 +67,6 @@ function PrivacyPage() {
                 you create, plus who you share shelves with.
               </li>
               <li>
-                <strong className="text-ink">Encrypted notes.</strong> Notes in
-                your private vault are end-to-end encrypted in your browser
-                using a key derived from your passphrase. We store only the
-                ciphertext — we cannot read them, and we cannot recover them if
-                you lose your passphrase.
-              </li>
-              <li>
                 <strong className="text-ink">Technical data.</strong> To keep
                 you signed in and secure, we store session records that include
                 your IP address and browser user-agent.

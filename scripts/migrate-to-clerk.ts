@@ -27,13 +27,11 @@ import { createClerkClient } from '@clerk/backend'
 import * as schema from '../src/db/schema.ts'
 import {
   activity,
-  encryptedNotes,
   itemReactions,
   items,
   listMembers,
   lists,
   user,
-  userVault,
 } from '../src/db/schema.ts'
 
 config({ path: ['.env.local', '.env'] })
@@ -56,8 +54,6 @@ const FK_COLUMNS = [
   { table: items, column: items.addedBy, key: 'addedBy' },
   { table: activity, column: activity.userId, key: 'userId' },
   { table: itemReactions, column: itemReactions.userId, key: 'userId' },
-  { table: userVault, column: userVault.userId, key: 'userId' },
-  { table: encryptedNotes, column: encryptedNotes.userId, key: 'userId' },
 ] as const
 
 /** Find an existing Clerk user by email, or create one (no password). */

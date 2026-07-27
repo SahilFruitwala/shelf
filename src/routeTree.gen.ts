@@ -15,13 +15,10 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppExercisesRouteImport } from './routes/_app.exercises'
-import { Route as AppNotesRouteImport } from './routes/_app.notes'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as SCodeRouteImport } from './routes/s.$code'
 import { Route as AppJoinCodeRouteImport } from './routes/_app.join.$code'
 import { Route as AppListListIdRouteImport } from './routes/_app.list.$listId'
-import { Route as AppNotesIndexRouteImport } from './routes/_app.notes.index'
-import { Route as AppNotesNoteIdRouteImport } from './routes/_app.notes.$noteId'
 import { Route as ApiWebhooksClerkRouteImport } from './routes/api/webhooks/clerk'
 
 const AppRoute = AppRouteImport.update({
@@ -53,11 +50,6 @@ const AppExercisesRoute = AppExercisesRouteImport.update({
   path: '/exercises',
   getParentRoute: () => AppRoute,
 } as any)
-const AppNotesRoute = AppNotesRouteImport.update({
-  id: '/notes',
-  path: '/notes',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -78,16 +70,6 @@ const AppListListIdRoute = AppListListIdRouteImport.update({
   path: '/list/$listId',
   getParentRoute: () => AppRoute,
 } as any)
-const AppNotesIndexRoute = AppNotesIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AppNotesRoute,
-} as any)
-const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
-  id: '/$noteId',
-  path: '/$noteId',
-  getParentRoute: () => AppNotesRoute,
-} as any)
 const ApiWebhooksClerkRoute = ApiWebhooksClerkRouteImport.update({
   id: '/api/webhooks/clerk',
   path: '/api/webhooks/clerk',
@@ -100,14 +82,11 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/welcome': typeof WelcomeRoute
   '/exercises': typeof AppExercisesRoute
-  '/notes': typeof AppNotesRouteWithChildren
   '/settings': typeof AppSettingsRoute
   '/s/$code': typeof SCodeRoute
   '/join/$code': typeof AppJoinCodeRoute
   '/list/$listId': typeof AppListListIdRoute
-  '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
-  '/notes/': typeof AppNotesIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -119,9 +98,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/join/$code': typeof AppJoinCodeRoute
   '/list/$listId': typeof AppListListIdRoute
-  '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
-  '/notes': typeof AppNotesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -130,15 +107,12 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/welcome': typeof WelcomeRoute
   '/_app/exercises': typeof AppExercisesRoute
-  '/_app/notes': typeof AppNotesRouteWithChildren
   '/_app/settings': typeof AppSettingsRoute
   '/s/$code': typeof SCodeRoute
   '/_app/': typeof AppIndexRoute
   '/_app/join/$code': typeof AppJoinCodeRoute
   '/_app/list/$listId': typeof AppListListIdRoute
-  '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
-  '/_app/notes/': typeof AppNotesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -148,14 +122,11 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/welcome'
     | '/exercises'
-    | '/notes'
     | '/settings'
     | '/s/$code'
     | '/join/$code'
     | '/list/$listId'
-    | '/notes/$noteId'
     | '/api/webhooks/clerk'
-    | '/notes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -167,9 +138,7 @@ export interface FileRouteTypes {
     | '/'
     | '/join/$code'
     | '/list/$listId'
-    | '/notes/$noteId'
     | '/api/webhooks/clerk'
-    | '/notes'
   id:
     | '__root__'
     | '/_app'
@@ -177,15 +146,12 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/welcome'
     | '/_app/exercises'
-    | '/_app/notes'
     | '/_app/settings'
     | '/s/$code'
     | '/_app/'
     | '/_app/join/$code'
     | '/_app/list/$listId'
-    | '/_app/notes/$noteId'
     | '/api/webhooks/clerk'
-    | '/_app/notes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -241,13 +207,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppExercisesRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/notes': {
-      id: '/_app/notes'
-      path: '/notes'
-      fullPath: '/notes'
-      preLoaderRoute: typeof AppNotesRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -276,20 +235,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppListListIdRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/notes/': {
-      id: '/_app/notes/'
-      path: '/'
-      fullPath: '/notes/'
-      preLoaderRoute: typeof AppNotesIndexRouteImport
-      parentRoute: typeof AppNotesRoute
-    }
-    '/_app/notes/$noteId': {
-      id: '/_app/notes/$noteId'
-      path: '/$noteId'
-      fullPath: '/notes/$noteId'
-      preLoaderRoute: typeof AppNotesNoteIdRouteImport
-      parentRoute: typeof AppNotesRoute
-    }
     '/api/webhooks/clerk': {
       id: '/api/webhooks/clerk'
       path: '/api/webhooks/clerk'
@@ -300,23 +245,8 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AppNotesRouteChildren {
-  AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
-  AppNotesIndexRoute: typeof AppNotesIndexRoute
-}
-
-const AppNotesRouteChildren: AppNotesRouteChildren = {
-  AppNotesNoteIdRoute: AppNotesNoteIdRoute,
-  AppNotesIndexRoute: AppNotesIndexRoute,
-}
-
-const AppNotesRouteWithChildren = AppNotesRoute._addFileChildren(
-  AppNotesRouteChildren,
-)
-
 interface AppRouteChildren {
   AppExercisesRoute: typeof AppExercisesRoute
-  AppNotesRoute: typeof AppNotesRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppJoinCodeRoute: typeof AppJoinCodeRoute
@@ -325,7 +255,6 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppExercisesRoute: AppExercisesRoute,
-  AppNotesRoute: AppNotesRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppJoinCodeRoute: AppJoinCodeRoute,

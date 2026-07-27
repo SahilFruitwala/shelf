@@ -6,13 +6,12 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
-import { Dumbbell, LogOut, NotebookPen, Settings } from 'lucide-react'
+import { Dumbbell, LogOut, Settings } from 'lucide-react'
 import { useClerk } from '@clerk/tanstack-react-start'
 
 import { getSessionUser } from '#/server/auth'
 import { getMyFeatures } from '#/server/features'
 import { ThemeToggle } from '#/components/theme-toggle'
-import { features } from '#/lib/features'
 import { cn } from '#/lib/utils'
 import { seo } from '#/lib/seo'
 
@@ -35,7 +34,6 @@ function AppLayout() {
   const router = useRouter()
   const { signOut } = useClerk()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const onNotes = pathname.startsWith('/notes')
   const onExercises = pathname.startsWith('/exercises')
 
   return (
@@ -59,20 +57,6 @@ function AppLayout() {
               <Dumbbell className="size-3.5" />
               Exercises
             </Link>
-            {features.notes && (
-              <Link
-                to="/notes"
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-                  onNotes
-                    ? 'bg-card-deep text-ink'
-                    : 'text-ink-soft hover:bg-card-deep hover:text-ink',
-                )}
-              >
-                <NotebookPen className="size-3.5" />
-                Notes
-              </Link>
-            )}
           </nav>
         </div>
         <div className="flex items-center gap-1">

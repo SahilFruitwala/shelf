@@ -4,7 +4,7 @@
  * Account deletion soft-deletes the local `user` row (sets `deletedAt` and
  * `purgeAfter`) and removes the Clerk user. This job runs on a schedule (cron)
  * and hard-deletes any row whose `purgeAfter` is in the past. FK cascades
- * (onDelete: 'cascade') remove the user's lists, items, notes, vault, etc.
+ * (onDelete: 'cascade') remove the user's lists, items, reactions, etc.
  *
  *   DATABASE_URL=… DATABASE_AUTH_TOKEN=… pnpm tsx scripts/purge-deleted-users.ts
  *
