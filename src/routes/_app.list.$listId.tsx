@@ -888,9 +888,11 @@ function ListPage() {
 
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className={cn(tripShelf && 'max-w-2xl')}>
-          {/* Skip the eyebrow when it'd just repeat the heading below, e.g.
-              the default "Movies" shelf named "Movies". */}
-          {(tripShelf || list.name.trim().toLowerCase() !== config.label.toLowerCase()) && (
+          {/* When the shelf name already says it (e.g. the default "Movies"
+              shelf), drop the repeated word but keep the category's accent
+              as just a colored icon instead of losing it entirely. */}
+          {tripShelf ||
+          list.name.trim().toLowerCase() !== config.label.toLowerCase() ? (
             <p
               className={cn(
                 'text-[13px] font-semibold uppercase tracking-wide',
@@ -906,6 +908,8 @@ function ListPage() {
                 config.label
               )}
             </p>
+          ) : (
+            <config.icon className={cn('size-5', config.textClass)} />
           )}
           <h1
             className={cn(
