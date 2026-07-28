@@ -35,6 +35,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  Search,
   Trash2,
   UserPlus,
   X,
@@ -100,7 +101,12 @@ interface ListSearch {
   status: StatusFilter
   sort: SortKey
   genres: Array<string>
+  /** Free-text filter over this shelf only. */
+  q: string
 }
+
+/** Below this the filter is dropped — one letter matches most of the shelf. */
+const MIN_QUERY = 2
 
 export const Route = createFileRoute('/_app/list/$listId')({
   // Input is Partial so every field has a default and plain <Link to="/list/…">
@@ -120,6 +126,7 @@ export const Route = createFileRoute('/_app/list/$listId')({
       genres: Array.isArray(search.genres)
         ? search.genres.filter((g): g is string => typeof g === 'string')
         : [],
+      q: typeof search.q === 'string' ? search.q : '',
     }
   },
   loader: async ({ context, params }) => {
@@ -243,6 +250,15 @@ function Pagination({
     </nav>
   )
 }
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return debounced
+}
+
 function useIsDark() {
   return useSyncExternalStore(
     (onStoreChange) => {
@@ -496,7 +512,13 @@ function ListPage() {
 
   useHotkey('a', () => setAdding(true))
 
-  const { page, status: filter, sort, genres: genreKey } = Route.useSearch()
+  const {
+    page,
+    status: filter,
+    sort,
+    genres: genreKey,
+    q: urlQuery,
+  } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   // Changing what's shown always returns to page 1 — page 7 of the old filter
   // rarely means anything under the new one.
@@ -509,6 +531,26 @@ function ListPage() {
   const genreFilter = useMemo(() => new Set(genreKey), [genreKey])
   const setGenreFilter = (next: Set<string>) =>
     setSearch({ genres: [...next].sort((a, b) => a.localeCompare(b)), page: 1 })
+
+  // Typed text stays local and lands in the URL a beat later, so every
+  // keystroke isn't a history entry or a request.
+  const [queryDraft, setQueryDraft] = useState(urlQuery)
+  const debouncedQuery = useDebounced(queryDraft, 250)
+  useEffect(() => {
+    if (debouncedQuery.trim() === urlQuery.trim()) return
+    void navigate({
+      search: (prev) => ({ ...prev, q: debouncedQuery.trim(), page: 1 }),
+      replace: true,
+    })
+  }, [debouncedQuery])
+  // A back/forward step or a fresh link should show what the URL says.
+  useEffect(() => {
+    setQueryDraft((draft) =>
+      draft.trim() === urlQuery.trim() ? draft : urlQuery,
+    )
+  }, [urlQuery])
+  const query = urlQuery.trim().length >= MIN_QUERY ? urlQuery.trim() : ''
+
   const [tripView, setTripView] = useState(false)
   const [showMap, setShowMap] = useState(false)
   const [mapFocus, setMapFocus] = useState<{ lat: number; lng: number } | null>(
@@ -549,6 +591,7 @@ function ListPage() {
       'items',
       filter,
       genreKey,
+      query,
       serverSort,
       page,
       perPage,
@@ -559,6 +602,7 @@ function ListPage() {
           listId,
           status: filter,
           genres: genreKey,
+          q: query || undefined,
           sort: serverSort,
           page,
           perPage,
@@ -916,6 +960,40 @@ function ListPage() {
 
       {counts.all > 0 && (
         <div className="mb-5">
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-faint" />
+            <Input
+              value={queryDraft}
+              onChange={(e) => setQueryDraft(e.target.value)}
+              placeholder={`Search this shelf — title, notes${
+                list.type === 'book' ? ', author' : ''
+              }…`}
+              aria-label="Search this shelf"
+              aria-describedby={
+                queryDraft.trim().length === 1 ? 'shelf-search-hint' : undefined
+              }
+              className="pl-10 pr-10"
+            />
+            {queryDraft && (
+              <button
+                type="button"
+                onClick={() => setQueryDraft('')}
+                aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer rounded-full p-1 text-ink-faint hover:text-ink"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+            {queryDraft.trim().length === 1 && (
+              <p
+                id="shelf-search-hint"
+                className="mt-1.5 text-[13px] text-ink-faint"
+              >
+                Type one more character to search.
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px]">
             <div className="relative">
               <ListFilter className="pointer-events-none absolute left-3 top-1/2 z-10 size-3.5 -translate-y-1/2 text-ink-faint" />
@@ -1147,7 +1225,9 @@ function ListPage() {
         <ItemGridSkeleton />
       ) : visible.length === 0 ? (
         <p className="py-12 text-center text-[15px] text-ink-faint">
-          Nothing matches this filter.
+          {query
+            ? `Nothing on this shelf matches “${query}”.`
+            : 'Nothing matches this filter.'}
         </p>
       ) : (
         <div

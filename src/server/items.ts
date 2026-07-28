@@ -124,6 +124,8 @@ export const getListItems = createServerFn({ method: 'GET' })
       listId: string
       status?: ItemStatus | 'all'
       genres?: Array<string>
+      /** Free-text filter over this shelf's own items. */
+      q?: string
       sort?: ItemSort
       page?: number
       perPage?: number
@@ -136,7 +138,7 @@ export const getListItems = createServerFn({ method: 'GET' })
         throw new Error('Unknown status')
       if (data.sort && !ITEM_SORTS.includes(data.sort))
         throw new Error('Unknown sort')
-      return data
+      return { ...data, q: data.q?.trim() }
     },
   )
   .handler(async ({ data }) => {
@@ -162,6 +164,20 @@ export const getListItems = createServerFn({ method: 'GET' })
           sql`', ' || coalesce(items.metadata ->> '$.genre', '') || ', ' like ${`%, ${likeLiteral(g)}, %`} escape '\\'`,
       )
       where.push(or(...genreMatches)!)
+    }
+
+    // Same fields the global search covers, plus the two metadata fields that
+    // read as part of the title on a card (a book's author, a place's address).
+    if (data.q && data.q.length >= 2) {
+      const pattern = `%${likeLiteral(data.q)}%`
+      where.push(
+        or(
+          sql`items.title like ${pattern} escape '\\'`,
+          sql`items.notes like ${pattern} escape '\\'`,
+          sql`items.metadata ->> '$.author' like ${pattern} escape '\\'`,
+          sql`items.metadata ->> '$.address' like ${pattern} escape '\\'`,
+        )!,
+      )
     }
 
     const filter = and(...where)
