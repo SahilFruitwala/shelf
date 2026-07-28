@@ -24,6 +24,7 @@ import {
   safeHttpUrl,
 } from '#/lib/utils'
 import { deleteItem, moveItem, setItemStatus, updateItem } from '#/server/items'
+import { setShowWatched } from '#/server/episodes'
 import { getMyLists } from '#/server/lists'
 import { fetchWatchProviders } from '#/server/lookup'
 import { isMultiTypeShelf } from '#/lib/list-types'
@@ -513,6 +514,15 @@ export function ItemCard({
       setItemStatus({ data: { itemId: item.id, status } }),
     onSuccess: invalidate,
   })
+  // Marking a show watched from the card also ticks off every episode.
+  const setAllEpisodesWatched = useMutation({
+    mutationFn: () => setShowWatched({ data: { itemId: item.id, watched: true } }),
+    onSuccess: async () => {
+      await invalidate()
+      await queryClient.invalidateQueries({ queryKey: ['seasons', item.id] })
+      await queryClient.invalidateQueries({ queryKey: ['episodes', item.id] })
+    },
+  })
   const remove = useMutation({
     mutationFn: () => deleteItem({ data: item.id }),
     onSuccess: invalidate,
@@ -851,7 +861,10 @@ export function ItemCard({
                 <Button
                   variant="quiet"
                   className="px-2.5 py-1 text-[13px]"
-                  onClick={() => setStatus.mutate('done')}
+                  onClick={() => {
+                    setStatus.mutate('done')
+                    if (item.type === 'tv') setAllEpisodesWatched.mutate()
+                  }}
                 >
                   <Check className="size-3.5" />
                   {config.doneLabel}

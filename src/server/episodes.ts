@@ -174,6 +174,63 @@ async function syncShowProgress(itemId: string) {
   await db.update(items).set({ metadata }).where(eq(items.id, itemId))
 }
 
+/** Tick or clear every episode across every season — backs "mark whole show
+ *  watched" on the item card. */
+export const setShowWatched = createServerFn({ method: 'POST' })
+  .validator((data: { itemId: string; watched: boolean }) => data)
+  .handler(async ({ data }) => {
+    const { db, item } = await requireShow(data.itemId)
+
+    if (!data.watched) {
+      await db
+        .delete(watchedEpisodes)
+        .where(eq(watchedEpisodes.itemId, data.itemId))
+      await syncShowProgress(data.itemId)
+      return
+    }
+
+    const tmdbId = String(item.metadata?.tmdbId ?? '').trim()
+    if (!tmdbId) return
+
+    const show = await tmdb<{ seasons?: Array<TmdbSeasonSummary> }>(
+      `tv/${tmdbId}`,
+    )
+    if (!show?.seasons) return
+
+    const seasonEpisodes = await Promise.all(
+      show.seasons.map((s) =>
+        tmdb<{ episodes?: Array<TmdbEpisode> }>(
+          `tv/${tmdbId}/season/${s.season_number}`,
+        ),
+      ),
+    )
+
+    const existing = await db
+      .select({ season: watchedEpisodes.season, number: watchedEpisodes.number })
+      .from(watchedEpisodes)
+      .where(eq(watchedEpisodes.itemId, data.itemId))
+    const seen = new Set(existing.map((e) => `${e.season}:${e.number}`))
+
+    const toInsert: Array<typeof watchedEpisodes.$inferInsert> = []
+    show.seasons.forEach((s, i) => {
+      for (const e of seasonEpisodes[i]?.episodes ?? []) {
+        const key = `${s.season_number}:${e.episode_number}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        toInsert.push({
+          id: newId(),
+          itemId: data.itemId,
+          season: s.season_number,
+          number: e.episode_number,
+          watchedAt: new Date(),
+        })
+      }
+    })
+
+    if (toInsert.length > 0) await db.insert(watchedEpisodes).values(toInsert)
+    await syncShowProgress(data.itemId)
+  })
+
 export const toggleEpisode = createServerFn({ method: 'POST' })
   .validator((data: { itemId: string; season: number; number: number }) => data)
   .handler(async ({ data }) => {

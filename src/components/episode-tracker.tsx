@@ -157,6 +157,33 @@ export function EpisodeTracker({
     await queryClient.invalidateQueries({ queryKey: ['list', listId] })
   }
 
+  // Marks/clears a whole season from its collapsed row, without requiring it
+  // to be expanded first — fetches (or reuses) its episode numbers on demand.
+  const seasonBulk = useMutation({
+    mutationFn: async ({
+      season,
+      watched,
+    }: {
+      season: number
+      watched: boolean
+    }) => {
+      const episodes = await queryClient.fetchQuery({
+        queryKey: ['episodes', itemId, season],
+        queryFn: () => getSeasonEpisodes({ data: { itemId, season } }),
+        staleTime: 1000 * 60 * 60,
+      })
+      return setSeasonWatched({
+        data: {
+          itemId,
+          season,
+          numbers: episodes.map((e) => e.number),
+          watched,
+        },
+      })
+    },
+    onSuccess: onChanged,
+  })
+
   if (isPending)
     return (
       <p className="flex items-center gap-2 py-3 text-[12px] text-ink-faint">
@@ -190,37 +217,65 @@ export function EpisodeTracker({
             s.episodeCount > 0 && s.watchedCount >= s.episodeCount
           return (
             <li key={s.season}>
-              <button
-                type="button"
-                onClick={() => setOpenSeason(open ? null : s.season)}
-                aria-expanded={open}
-                className="flex w-full cursor-pointer items-center gap-2.5 py-2 text-left hover:bg-card-deep"
-              >
-                <ChevronRight
-                  className={cn(
-                    'size-3.5 shrink-0 text-ink-faint transition-transform',
-                    open && 'rotate-90',
-                  )}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span
-                      className={cn(
-                        'truncate text-[13px] font-medium',
-                        complete ? 'text-ink-soft' : 'text-ink',
-                      )}
-                    >
-                      {s.name}
+              <div className="flex w-full items-center gap-2.5 py-2 hover:bg-card-deep">
+                <button
+                  type="button"
+                  onClick={() => setOpenSeason(open ? null : s.season)}
+                  aria-expanded={open}
+                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left"
+                >
+                  <ChevronRight
+                    className={cn(
+                      'size-3.5 shrink-0 text-ink-faint transition-transform',
+                      open && 'rotate-90',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span
+                        className={cn(
+                          'truncate text-[13px] font-medium',
+                          complete ? 'text-ink-soft' : 'text-ink',
+                        )}
+                      >
+                        {s.name}
+                      </span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-ink-faint">
+                        {s.watchedCount}/{s.episodeCount}
+                      </span>
                     </span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-ink-faint">
-                      {s.watchedCount}/{s.episodeCount}
+                    <span className="mt-1 block">
+                      <ProgressBar
+                        done={s.watchedCount}
+                        total={s.episodeCount}
+                      />
                     </span>
                   </span>
-                  <span className="mt-1 block">
-                    <ProgressBar done={s.watchedCount} total={s.episodeCount} />
-                  </span>
-                </span>
-              </button>
+                </button>
+                {s.episodeCount > 0 && (
+                  <button
+                    type="button"
+                    title={
+                      complete ? 'Clear whole season' : 'Mark whole season watched'
+                    }
+                    aria-label={
+                      complete ? 'Clear whole season' : 'Mark whole season watched'
+                    }
+                    onClick={() =>
+                      seasonBulk.mutate({ season: s.season, watched: !complete })
+                    }
+                    disabled={seasonBulk.isPending}
+                    className={cn(
+                      'flex size-5 shrink-0 cursor-pointer items-center justify-center rounded border transition-colors disabled:opacity-50',
+                      complete
+                        ? 'border-ink bg-ink text-bg'
+                        : 'border-line bg-card-deep hover:border-ink-faint',
+                    )}
+                  >
+                    {complete && <Check className="size-3.5" />}
+                  </button>
+                )}
+              </div>
               {open && (
                 <SeasonEpisodes
                   itemId={itemId}
