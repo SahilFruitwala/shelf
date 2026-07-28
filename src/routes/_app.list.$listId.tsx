@@ -876,6 +876,12 @@ function ListPage() {
       : []),
   ]
 
+  // The eyebrow is dead weight when the shelf name already says it (the
+  // default "Movies" shelf). Those headings carry the category accent as an
+  // icon beside the title instead.
+  const showEyebrow =
+    tripShelf || list.name.trim().toLowerCase() !== config.label.toLowerCase()
+
   return (
     <main>
       <Link
@@ -888,11 +894,7 @@ function ListPage() {
 
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className={cn(tripShelf && 'max-w-2xl')}>
-          {/* When the shelf name already says it (e.g. the default "Movies"
-              shelf), drop the repeated word but keep the category's accent
-              as just a colored icon instead of losing it entirely. */}
-          {tripShelf ||
-          list.name.trim().toLowerCase() !== config.label.toLowerCase() ? (
+          {showEyebrow && (
             <p
               className={cn(
                 'text-[13px] font-semibold uppercase tracking-wide',
@@ -908,15 +910,21 @@ function ListPage() {
                 config.label
               )}
             </p>
-          ) : (
-            <config.icon className={cn('size-5', config.textClass)} />
           )}
           <h1
             className={cn(
-              'text-hero mt-1 font-display text-3xl font-bold sm:text-4xl',
+              'text-hero font-display text-3xl font-bold sm:text-4xl',
+              showEyebrow
+                ? 'mt-1'
+                : 'flex items-center gap-2.5 sm:gap-3',
               tripShelf && 'text-balance',
             )}
           >
+            {!showEyebrow && (
+              <config.icon
+                className={cn('size-7 shrink-0 sm:size-8', config.textClass)}
+              />
+            )}
             {list.name}
             {list.isOwner && !list.isDefault && (
               <button
