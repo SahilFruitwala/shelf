@@ -55,6 +55,7 @@ import {
   getListItems,
 } from '#/server/items'
 import type { ItemSort } from '#/server/items'
+import { backfillTmdbArtwork } from '#/server/tmdb-backfill'
 import {
   deleteList,
   getList,
@@ -615,6 +616,37 @@ function ListPage() {
 
   const loadedItems = itemsQuery.data?.items ?? []
   const totalPages = itemsQuery.data?.totalPages ?? 1
+
+  // TEMPORARY: older movie/TV items were saved without a TMDb link or poster.
+  // Fill them in for whatever page is on screen, one request for the whole
+  // batch, and refresh the grid once anything actually changed.
+  const backfilledRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const missing = loadedItems
+      .filter(
+        (i) =>
+          (i.type === 'movie' || i.type === 'tv') &&
+          (!i.link?.trim() || !i.imageUrl?.trim()) &&
+          !backfilledRef.current.has(i.id),
+      )
+      .map((i) => i.id)
+      // Matches the server's per-call cap; the rest get picked up on the
+      // refetch this triggers.
+      .slice(0, 20)
+    if (missing.length === 0) return
+    for (const id of missing) backfilledRef.current.add(id)
+
+    let cancelled = false
+    backfillTmdbArtwork({ data: { listId, itemIds: missing } })
+      .then((res) => {
+        if (!cancelled && res.updated > 0)
+          queryClient.invalidateQueries({ queryKey: ['list', listId, 'items'] })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [loadedItems, listId, queryClient])
 
   const isGeoShelf =
     list?.type === 'restaurant' ||
