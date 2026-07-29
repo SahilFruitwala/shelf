@@ -253,6 +253,48 @@ export function ExercisesPageSkeleton() {
   )
 }
 
+/** `/workouts` — routines grid over the day-by-day history. */
+export function WorkoutsPageSkeleton() {
+  return (
+    <SkeletonScreen label="Loading your workouts" className="block">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4 sm:mb-8">
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-52" />
+          <Skeleton className="h-4 w-36" />
+        </div>
+        <Skeleton className="h-10 w-44 rounded-full" />
+      </div>
+      <Skeleton className="mb-3 h-3.5 w-24" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }, (_, i) => (
+          <Skeleton key={i} className="h-36 rounded-(--radius-card)" />
+        ))}
+      </div>
+      <Skeleton className="mb-3 mt-10 h-3.5 w-20" />
+      <Skeleton className="h-64 rounded-(--radius-card)" />
+    </SkeletonScreen>
+  )
+}
+
+/** `/workouts/$sessionId` — the set-by-set logging screen. */
+export function WorkoutSessionSkeleton() {
+  return (
+    <SkeletonScreen
+      label="Loading this workout"
+      className="mx-auto block max-w-2xl"
+    >
+      <Skeleton className="mb-4 h-4 w-28" />
+      <Skeleton className="h-9 w-64" />
+      <Skeleton className="mt-2 h-6 w-48" />
+      <div className="mt-6 space-y-3">
+        {Array.from({ length: 3 }, (_, i) => (
+          <Skeleton key={i} className="h-44 rounded-(--radius-card)" />
+        ))}
+      </div>
+    </SkeletonScreen>
+  )
+}
+
 /** `/join/$code` — the invite preview card. */
 export function JoinPreviewSkeleton() {
   return (

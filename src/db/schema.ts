@@ -1,6 +1,7 @@
 import {
   sqliteTable,
   integer,
+  real,
   text,
   index,
   uniqueIndex,
@@ -242,6 +243,116 @@ export const watchedEpisodes = sqliteTable(
 )
 
 export type WatchedEpisode = typeof watchedEpisodes.$inferSelect
+
+// ---------- Workouts ----------
+// Deliberately outside the lists/items model: a workout is a dated session of
+// exercises, each with its own sets — not one row with a to_try/done status.
+
+export const WEIGHT_UNITS = ['kg', 'lb'] as const
+export type WeightUnit = (typeof WEIGHT_UNITS)[number]
+
+/** A saved routine — "Push day", "Leg day" — so exercises aren't retyped. */
+export const workoutTemplates = sqliteTable(
+  'workout_templates',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    notes: text('notes'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [index('workout_templates_user_idx').on(t.userId)],
+)
+
+export const workoutTemplateExercises = sqliteTable(
+  'workout_template_exercises',
+  {
+    id: text('id').primaryKey(),
+    templateId: text('template_id')
+      .notNull()
+      .references(() => workoutTemplates.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** free-exercise-db id, when picked from the exercise search. */
+    slug: text('slug'),
+    position: integer('position').notNull().default(0),
+    targetSets: integer('target_sets').notNull().default(3),
+    targetReps: integer('target_reps'),
+    targetWeight: real('target_weight'),
+    unit: text('unit', { enum: WEIGHT_UNITS }).notNull().default('kg'),
+  },
+  (t) => [index('workout_template_exercises_template_idx').on(t.templateId)],
+)
+
+/** One day at the gym. `templateId` is kept only as a provenance hint — the
+ *  exercises are copied in, so editing a template never rewrites history. */
+export const workoutSessions = sqliteTable(
+  'workout_sessions',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    /** Local calendar day as YYYY-MM-DD — a timestamp would drift by timezone. */
+    date: text('date').notNull(),
+    name: text('name').notNull(),
+    templateId: text('template_id').references(() => workoutTemplates.id, {
+      onDelete: 'set null',
+    }),
+    notes: text('notes'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [index('workout_sessions_user_date_idx').on(t.userId, t.date)],
+)
+
+export const workoutSessionExercises = sqliteTable(
+  'workout_session_exercises',
+  {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => workoutSessions.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    slug: text('slug'),
+    position: integer('position').notNull().default(0),
+    notes: text('notes'),
+  },
+  (t) => [
+    index('workout_session_exercises_session_idx').on(t.sessionId),
+    // "What did I lift last time?" looks an exercise up by name across every
+    // past session, so that lookup needs its own index.
+    index('workout_session_exercises_name_idx').on(t.name),
+  ],
+)
+
+export const workoutSets = sqliteTable(
+  'workout_sets',
+  {
+    id: text('id').primaryKey(),
+    sessionExerciseId: text('session_exercise_id')
+      .notNull()
+      .references(() => workoutSessionExercises.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull().default(0),
+    reps: integer('reps'),
+    weight: real('weight'),
+    unit: text('unit', { enum: WEIGHT_UNITS }).notNull().default('kg'),
+    /** Ticked off during the session; untouched prefilled sets stay false. */
+    done: integer('done', { mode: 'boolean' }).notNull().default(false),
+  },
+  (t) => [index('workout_sets_exercise_idx').on(t.sessionExerciseId)],
+)
+
+export type WorkoutTemplate = typeof workoutTemplates.$inferSelect
+export type WorkoutTemplateExercise =
+  typeof workoutTemplateExercises.$inferSelect
+export type WorkoutSession = typeof workoutSessions.$inferSelect
+export type WorkoutSessionExercise = typeof workoutSessionExercises.$inferSelect
+export type WorkoutSet = typeof workoutSets.$inferSelect
 
 export type List = typeof lists.$inferSelect
 export type ListMember = typeof listMembers.$inferSelect

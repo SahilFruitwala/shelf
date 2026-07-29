@@ -19,6 +19,8 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as SCodeRouteImport } from './routes/s.$code'
 import { Route as AppJoinCodeRouteImport } from './routes/_app.join.$code'
 import { Route as AppListListIdRouteImport } from './routes/_app.list.$listId'
+import { Route as AppWorkoutsIndexRouteImport } from './routes/_app.workouts.index'
+import { Route as AppWorkoutsSessionIdRouteImport } from './routes/_app.workouts.$sessionId'
 import { Route as ApiWebhooksClerkRouteImport } from './routes/api/webhooks/clerk'
 
 const AppRoute = AppRouteImport.update({
@@ -70,6 +72,16 @@ const AppListListIdRoute = AppListListIdRouteImport.update({
   path: '/list/$listId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkoutsIndexRoute = AppWorkoutsIndexRouteImport.update({
+  id: '/workouts/',
+  path: '/workouts/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWorkoutsSessionIdRoute = AppWorkoutsSessionIdRouteImport.update({
+  id: '/workouts/$sessionId',
+  path: '/workouts/$sessionId',
+  getParentRoute: () => AppRoute,
+} as any)
 const ApiWebhooksClerkRoute = ApiWebhooksClerkRouteImport.update({
   id: '/api/webhooks/clerk',
   path: '/api/webhooks/clerk',
@@ -86,7 +98,9 @@ export interface FileRoutesByFullPath {
   '/s/$code': typeof SCodeRoute
   '/join/$code': typeof AppJoinCodeRoute
   '/list/$listId': typeof AppListListIdRoute
+  '/workouts/$sessionId': typeof AppWorkoutsSessionIdRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/workouts/': typeof AppWorkoutsIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -98,7 +112,9 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/join/$code': typeof AppJoinCodeRoute
   '/list/$listId': typeof AppListListIdRoute
+  '/workouts/$sessionId': typeof AppWorkoutsSessionIdRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/workouts': typeof AppWorkoutsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -112,7 +128,9 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/join/$code': typeof AppJoinCodeRoute
   '/_app/list/$listId': typeof AppListListIdRoute
+  '/_app/workouts/$sessionId': typeof AppWorkoutsSessionIdRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/_app/workouts/': typeof AppWorkoutsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -126,7 +144,9 @@ export interface FileRouteTypes {
     | '/s/$code'
     | '/join/$code'
     | '/list/$listId'
+    | '/workouts/$sessionId'
     | '/api/webhooks/clerk'
+    | '/workouts/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -138,7 +158,9 @@ export interface FileRouteTypes {
     | '/'
     | '/join/$code'
     | '/list/$listId'
+    | '/workouts/$sessionId'
     | '/api/webhooks/clerk'
+    | '/workouts'
   id:
     | '__root__'
     | '/_app'
@@ -151,7 +173,9 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/join/$code'
     | '/_app/list/$listId'
+    | '/_app/workouts/$sessionId'
     | '/api/webhooks/clerk'
+    | '/_app/workouts/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -235,6 +259,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppListListIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/workouts/': {
+      id: '/_app/workouts/'
+      path: '/workouts'
+      fullPath: '/workouts/'
+      preLoaderRoute: typeof AppWorkoutsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/workouts/$sessionId': {
+      id: '/_app/workouts/$sessionId'
+      path: '/workouts/$sessionId'
+      fullPath: '/workouts/$sessionId'
+      preLoaderRoute: typeof AppWorkoutsSessionIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/webhooks/clerk': {
       id: '/api/webhooks/clerk'
       path: '/api/webhooks/clerk'
@@ -251,6 +289,8 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppJoinCodeRoute: typeof AppJoinCodeRoute
   AppListListIdRoute: typeof AppListListIdRoute
+  AppWorkoutsSessionIdRoute: typeof AppWorkoutsSessionIdRoute
+  AppWorkoutsIndexRoute: typeof AppWorkoutsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -259,6 +299,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppJoinCodeRoute: AppJoinCodeRoute,
   AppListListIdRoute: AppListListIdRoute,
+  AppWorkoutsSessionIdRoute: AppWorkoutsSessionIdRoute,
+  AppWorkoutsIndexRoute: AppWorkoutsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

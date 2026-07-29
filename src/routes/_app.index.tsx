@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Users, X } from 'lucide-react'
+import { Dumbbell, Plus, Search, Users, X } from 'lucide-react'
 
 import { LIST_TYPES } from '#/db/schema'
 import type { ListType } from '#/db/schema'
@@ -11,6 +11,8 @@ import { cn, timeAgo } from '#/lib/utils'
 import { useHotkey } from '#/lib/use-hotkey'
 import { getDustyItems, searchMyItems } from '#/server/items'
 import { createList, getMyLists } from '#/server/lists'
+import { getMyWorkouts } from '#/server/workouts'
+import { formatDay } from '#/lib/workouts'
 import { ActivityFeed } from '#/components/activity-feed'
 import { AddItemDialog } from '#/components/add-item'
 import { HoverHighlight } from '#/components/aceternity'
@@ -113,6 +115,41 @@ function ListCard({ list }: { list: ListSummary }) {
               : list.toTryCount > 0
                 ? `${list.toTryCount} waiting`
                 : 'All done'}
+          </span>
+        </p>
+      </div>
+    </Link>
+  )
+}
+
+/** Workouts don't live in `lists` — a training day is dated sets, not items —
+ *  but it belongs on the shelf wall, so it gets a card shaped like the rest. */
+function WorkoutsCard() {
+  // Same key and payload as /workouts, so the two share one cache entry
+  // instead of clobbering each other with different page sizes.
+  const { data: workouts = [] } = useQuery({
+    queryKey: ['workouts'],
+    queryFn: () => getMyWorkouts({ data: {} }),
+  })
+  const latest = workouts.at(0)
+
+  return (
+    <Link
+      to="/workouts"
+      className="block h-full rounded-(--radius-card) bg-card p-4 transition-transform hover:translate-y-[-1px]"
+    >
+      <div className="flex h-24 items-center justify-center rounded-lg bg-card-deep/50">
+        <Dumbbell className="size-6 text-cat-exercise opacity-50" />
+      </div>
+      <div className="mt-4">
+        <h2 className="font-display text-lg font-semibold leading-snug">
+          Workouts
+        </h2>
+        <p className="mt-1 truncate text-[13px] text-ink-soft">
+          <span className="text-ink-faint">
+            {latest
+              ? `${latest.name} · ${formatDay(latest.date)}`
+              : 'Nothing logged yet'}
           </span>
         </p>
       </div>
@@ -468,6 +505,11 @@ function HomePage() {
                   </HoverHighlight>
                 </div>
               ))}
+            <div onMouseEnter={() => setHovered('workouts')}>
+              <HoverHighlight active={hovered === 'workouts'}>
+                <WorkoutsCard />
+              </HoverHighlight>
+            </div>
           </div>
 
           {lists.some((l) => !l.isDefault) && (
