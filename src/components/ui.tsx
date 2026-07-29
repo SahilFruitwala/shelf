@@ -175,17 +175,23 @@ export function Modal({
         if (e.target === ref.current) onClose()
       }}
       className={cn(
-        // Cap to the viewport (min-h-0 lets the body scroll region shrink) so
-        // long forms never overflow off-screen on phones.
         // `open:flex` (not bare `flex`) so a CLOSED dialog keeps the browser's
         // default display:none — otherwise every mounted-but-closed dialog
-        // would render inline. min-h-0 lets the body scroll region shrink.
-        'glow-card m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] flex-col rounded-(--radius-card) p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm open:flex open:animate-in open:fade-in open:zoom-in-95 open:duration-150 sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)]',
-        wide ? 'max-w-xl' : 'max-w-md',
+        // would render inline. min-h-0 lets the body scroll region shrink so
+        // long forms scroll inside the sheet instead of overflowing off-screen.
+        'glow-card flex-col p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm open:flex open:animate-in open:duration-200',
+        // Phones: bottom sheet flush to the edges — full width, pinned to the
+        // bottom (mt-auto), only the top corners rounded, slides up.
+        // max-w-none overrides the UA dialog `max-width: calc(100% - 6px - 2em)`,
+        // which would otherwise inset the sheet from both edges.
+        'mx-auto mt-auto mb-0 max-h-[85dvh] w-full max-w-none rounded-t-(--radius-card) rounded-b-none open:slide-in-from-bottom-4',
+        // sm and up: the classic centered card.
+        'sm:m-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:rounded-(--radius-card) sm:open:fade-in sm:open:zoom-in-95 sm:open:slide-in-from-bottom-0',
+        wide ? 'sm:max-w-xl' : 'sm:max-w-md',
       )}
     >
       {/* Pinned header — stays visible while the body below scrolls. */}
-      <div className="flex items-center justify-between gap-4 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
+      <div className="shrink-0 flex items-center justify-between gap-4 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
         <h2 className="text-hero font-display text-xl font-semibold">{title}</h2>
         <button
           onClick={onClose}
@@ -195,7 +201,9 @@ export function Modal({
           <X className="size-4.5" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 sm:px-6 sm:pb-6">
+      {/* Bottom padding clears the home indicator when the sheet sits flush
+          against the bottom edge (viewport-fit=cover). */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-6">
         {children}
       </div>
     </dialog>

@@ -30,7 +30,11 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       { charSet: 'utf-8' },
       {
         name: 'viewport',
-        content: 'width=device-width, initial-scale=1, viewport-fit=cover',
+        // interactive-widget: the on-screen keyboard resizes the layout
+        // viewport instead of panning it, so dvh-sized modals stay on screen
+        // and their fields stay reachable above the keyboard.
+        content:
+          'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content',
       },
       ...seo(),
       { name: 'theme-color', content: '#09090b' },
