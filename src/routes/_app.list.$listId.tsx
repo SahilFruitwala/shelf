@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -107,6 +108,10 @@ interface ListSearch {
 
 /** Below this the filter is dropped — one letter matches most of the shelf. */
 const MIN_QUERY = 2
+
+// Shared empty Map for solo shelves — a fresh `new Map()` per render would
+// change identity on every ItemCard and defeat the card's memo.
+const EMPTY_MEMBER_NAMES: ReadonlyMap<string, string> = new Map()
 
 export const Route = createFileRoute('/_app/list/$listId')({
   // Input is Partial so every field has a default and plain <Link to="/list/…">
@@ -703,8 +708,16 @@ function ListPage() {
   }
 
   const config = LIST_TYPE_CONFIG[list.type]
-  const memberNames = new Map(list.members.map((m) => [m.userId, m.name]))
   const showAddedBy = list.members.length > 1
+  // Memoized because it's a prop on every ItemCard: rebuilding the Map each
+  // render would break the memo on all of them.
+  const memberNames = useMemo(
+    () =>
+      showAddedBy
+        ? new Map(list.members.map((m) => [m.userId, m.name]))
+        : EMPTY_MEMBER_NAMES,
+    [list.members, showAddedBy],
+  )
 
   const toTryLabel = isMultiTypeShelf(list.type)
     ? 'To try'
@@ -822,22 +835,27 @@ function ListPage() {
   const showReactions = list.members.length > 1
   const selectedIds = [...selected]
 
-  function toggleItem(id: string) {
+  // Both are props on every ItemCard, so they're kept referentially stable —
+  // a fresh arrow per row would defeat the card's memo.
+  const toggleItem = useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
+  }, [])
 
-  function focusItemOnMap(item: Item) {
+  const focusItemOnMap = useCallback((item: Item) => {
     const coords = itemCoords(item.metadata)
     if (!coords) return
     setMapFocus(coords)
     setFocusedItemId(item.id)
-    if (!showMap) setShowMap(true)
-  }
+    // Unconditional rather than guarded on `showMap`: setting state to its
+    // current value is a no-op in React, and reading `showMap` here would put
+    // it in the dep list and churn this callback every time the map toggles.
+    setShowMap(true)
+  }, [])
 
   function renderItem(item: Item) {
     const coords = itemCoords(item.metadata)
@@ -852,15 +870,16 @@ function ListPage() {
         listId={listId}
         showType={multiShelf && !mapMode}
         showGroup={multiShelf && showItinerary && !mapMode}
-        memberNames={showAddedBy ? memberNames : new Map()}
+        memberNames={memberNames}
         reactions={list!.reactionsByItem[item.id]}
         myUserId={list!.myUserId}
         showReactions={showReactions && !mapMode}
         distanceKm={sort === 'near' ? (distances.get(item.id) ?? null) : null}
         selectable={selecting}
         selected={selected.has(item.id)}
-        onToggleSelect={() => toggleItem(item.id)}
-        onShowOnMap={canPin ? () => focusItemOnMap(item) : undefined}
+        onToggleSelect={toggleItem}
+        onShowOnMap={focusItemOnMap}
+        canShowOnMap={canPin}
         compact={mapMode}
         mapActive={focusedItemId === item.id}
       />

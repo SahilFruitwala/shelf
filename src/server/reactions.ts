@@ -1,37 +1,49 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, eq } from 'drizzle-orm'
 
-import { itemReactions, items } from '#/db/schema'
+import { itemReactions, items, listMembers } from '#/db/schema'
 import { getDb } from './db-access'
-import { newId, requireMembership, requireUser } from './helpers'
+import { newId, requireUser } from './helpers'
 
 export const toggleReaction = createServerFn({ method: 'POST' })
   .validator((itemId: string) => itemId)
   .handler(async ({ data: itemId }) => {
     const db = await getDb()
     const me = await requireUser()
-    const item = await db.query.items.findFirst({
-      where: eq(items.id, itemId),
-    })
-    if (!item) throw new Error('Item not found')
-    await requireMembership(item.listId, me.id)
 
-    const existing = await db.query.itemReactions.findFirst({
-      where: and(
-        eq(itemReactions.itemId, itemId),
-        eq(itemReactions.userId, me.id),
-      ),
-    })
+    // Item lookup and membership check as one join — same shape as the
+    // episode guard. A row that isn't on a shelf you belong to simply doesn't
+    // match, so "missing" and "not yours" stay indistinguishable.
+    const allowed = await db
+      .select({ id: items.id })
+      .from(items)
+      .innerJoin(
+        listMembers,
+        and(
+          eq(listMembers.listId, items.listId),
+          eq(listMembers.userId, me.id),
+        ),
+      )
+      .where(eq(items.id, itemId))
+      .limit(1)
+    if (allowed.length === 0) throw new Error('Item not found')
 
-    if (existing) {
-      await db.delete(itemReactions).where(eq(itemReactions.id, existing.id))
-      return { reacted: false }
-    }
+    // Delete-returning collapses the read-then-write into one hop.
+    const removed = await db
+      .delete(itemReactions)
+      .where(
+        and(
+          eq(itemReactions.itemId, itemId),
+          eq(itemReactions.userId, me.id),
+        ),
+      )
+      .returning({ id: itemReactions.id })
+    if (removed.length > 0) return { reacted: false }
 
-    await db.insert(itemReactions).values({
-      id: newId(),
-      itemId,
-      userId: me.id,
-    })
+    await db
+      .insert(itemReactions)
+      .values({ id: newId(), itemId, userId: me.id })
+      // Guards the (item, user) unique index against a double-tap.
+      .onConflictDoNothing()
     return { reacted: true }
   })

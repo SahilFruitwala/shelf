@@ -25,7 +25,10 @@ async function syncUser(userId: string): Promise<SessionUser> {
   const cu = await clerkClient().users.getUser(userId)
   const email =
     cu.primaryEmailAddress?.emailAddress ??
-    cu.emailAddresses[0]?.emailAddress ??
+    // `.at(0)` rather than `[0]`: it returns `T | undefined`, so the optional
+    // chain that keeps an account with no email addresses from throwing is
+    // visible to the type checker instead of looking redundant.
+    cu.emailAddresses.at(0)?.emailAddress ??
     ''
   const name =
     [cu.firstName, cu.lastName].filter(Boolean).join(' ') ||

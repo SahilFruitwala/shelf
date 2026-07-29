@@ -195,23 +195,32 @@ export const getListItems = createServerFn({ method: 'GET' })
             ]
           : [sql`items.created_at desc`, sql`items.id desc`]
 
-    const [{ total }] = await db
-      .select({ total: sql<number>`count(*)` })
-      .from(items)
-      .where(filter)
+    const pageQuery = (n: number) =>
+      db
+        .select()
+        .from(items)
+        .where(filter)
+        .orderBy(...orderBy)
+        .limit(perPage)
+        .offset((n - 1) * perPage)
 
+    // The count and the rows are independent, so they go out together rather
+    // than one after the other — at ~55ms a hop that's half the latency of
+    // every filter, sort and page change. The rows are fetched for the page
+    // that was *asked* for, which is only wrong when a stale page number needs
+    // clamping (filter narrowed, items deleted); page 1 can never be clamped,
+    // and that's the overwhelming majority of requests.
+    const requestedPage = Math.max(Math.trunc(data.page ?? 1), 1)
+    const [countRows, requestedRows] = await Promise.all([
+      db.select({ total: sql<number>`count(*)` }).from(items).where(filter),
+      pageQuery(requestedPage),
+    ])
+
+    const total = countRows[0].total
     const totalPages = Math.max(Math.ceil(total / perPage), 1)
-    // Clamp so a stale page number (filter changed, items removed) still
-    // returns rows instead of an empty page.
-    const page = Math.min(Math.max(Math.trunc(data.page ?? 1), 1), totalPages)
-
-    const rows = await db
-      .select()
-      .from(items)
-      .where(filter)
-      .orderBy(...orderBy)
-      .limit(perPage)
-      .offset((page - 1) * perPage)
+    // Clamp so a stale page number still returns rows instead of an empty page.
+    const page = Math.min(requestedPage, totalPages)
+    const rows = page === requestedPage ? requestedRows : await pageQuery(page)
 
     return { items: rows, total, page, perPage, totalPages }
   })

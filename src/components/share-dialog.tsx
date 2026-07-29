@@ -145,6 +145,12 @@ export function ShareDialog({
                     Anyone with this link can see the shelf but can't change
                     anything. No account needed.
                   </p>
+                  {/* The public page renders each item's notes. That's easy to
+                      forget when notes were written as private asides, so it's
+                      stated rather than left to be discovered. */}
+                  <p className="mt-1.5 text-[13px] text-ink-faint">
+                    Your notes on each item are visible on this page.
+                  </p>
                   <Button
                     variant="danger"
                     className="mt-2 px-0 hover:bg-transparent underline-offset-2 hover:underline"
@@ -158,7 +164,8 @@ export function ShareDialog({
                 <>
                   <p className="mb-3 text-[14px] text-ink-soft">
                     Show this shelf off without letting anyone edit it — good
-                    for posting recommendations publicly.
+                    for posting recommendations publicly. Item titles and your
+                    notes will be visible to anyone with the link.
                   </p>
                   <Button
                     variant="quiet"

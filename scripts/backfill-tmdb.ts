@@ -13,6 +13,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/libsql'
 
 import * as schema from '../src/db/schema.ts'
+import type { ItemMetadata } from '../src/db/schema.ts'
 
 config({ path: ['.env.local', '.env'] })
 
@@ -164,7 +165,9 @@ async function main() {
     const exact = results.find(
       (r) => normalize((kind === 'movie' ? r.title : r.name) ?? '') === normalize(item.title),
     )
-    const top = results[0]
+    // `.at(0)` returns `T | undefined`, so the guards below on an empty
+    // result set are visible to the type checker rather than looking redundant.
+    const top = results.at(0)
     const topYear = (
       (kind === 'movie' ? top?.release_date : top?.first_air_date) ?? ''
     ).slice(0, 4)
@@ -185,7 +188,7 @@ async function main() {
       (kind === 'movie' ? match.release_date : match.first_air_date) ?? ''
     ).slice(0, 4)
 
-    const metadata: Record<string, string> = {
+    const metadata: ItemMetadata = {
       ...item.metadata,
       tmdbId: String(match.id),
       tmdbKind: kind,

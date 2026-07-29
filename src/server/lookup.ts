@@ -1,86 +1,9 @@
-import { lookup as dnsLookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
-
 import { createServerFn } from '@tanstack/react-start'
 
-import { requireUser } from './helpers'
-
-// ---------- SSRF guard for user-supplied URLs ----------
-
-/** True for loopback, private, link-local, and other non-public IP ranges. */
-function isPrivateIp(ip: string): boolean {
-  const kind = isIP(ip)
-  if (kind === 4) {
-    const p = ip.split('.').map(Number)
-    if (p.length !== 4 || p.some((n) => Number.isNaN(n))) return true
-    const [a, b] = p
-    return (
-      a === 0 || // "this network"
-      a === 10 || // private
-      a === 127 || // loopback
-      (a === 169 && b === 254) || // link-local (incl. cloud metadata 169.254.169.254)
-      (a === 172 && b >= 16 && b <= 31) || // private
-      (a === 192 && b === 168) || // private
-      (a === 100 && b >= 64 && b <= 127) || // carrier-grade NAT
-      a >= 224 // multicast / reserved
-    )
-  }
-  if (kind === 6) {
-    const v = ip.toLowerCase()
-    if (v === '::1' || v === '::') return true
-    if (v.startsWith('fe80')) return true // link-local
-    if (v.startsWith('fc') || v.startsWith('fd')) return true // unique-local
-    // IPv4-mapped (::ffff:a.b.c.d) — check the embedded v4 address.
-    const mapped = v.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)
-    if (mapped) return isPrivateIp(mapped[1])
-    return false
-  }
-  return true // not a literal IP → treat as unsafe
-}
-
-/** Resolve a hostname and reject if it points at a private/internal address. */
-async function assertPublicHost(hostname: string): Promise<void> {
-  // Bracketed IPv6 literal or plain IP literal.
-  const literal = hostname.replace(/^\[|\]$/g, '')
-  if (isIP(literal)) {
-    if (isPrivateIp(literal)) throw new Error('Blocked address')
-    return
-  }
-  const records = await dnsLookup(hostname, { all: true })
-  if (records.length === 0 || records.some((r) => isPrivateIp(r.address))) {
-    throw new Error('Blocked address')
-  }
-}
-
-/**
- * fetch() for untrusted URLs. Follows redirects manually, validating that every
- * hop is http(s) and resolves to a public IP — closing off SSRF to loopback,
- * private ranges, and cloud metadata endpoints.
- */
-async function safeFetch(
-  url: string,
-  init: RequestInit & { maxRedirects?: number } = {},
-): Promise<Response> {
-  const { maxRedirects = 5, ...fetchInit } = init
-  let current = url
-  for (let i = 0; i <= maxRedirects; i++) {
-    const parsed = new URL(current)
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      throw new Error('Only http(s) links are supported')
-    }
-    await assertPublicHost(parsed.hostname)
-
-    const res = await fetch(current, { ...fetchInit, redirect: 'manual' })
-    if (res.status >= 300 && res.status < 400) {
-      const location = res.headers.get('location')
-      if (!location) return res
-      current = new URL(location, current).toString()
-      continue
-    }
-    return res
-  }
-  throw new Error('Too many redirects')
-}
+import { getAuthUser } from './db-access'
+import { assertLiveViewCode, requireUser } from './helpers'
+import { checkRateLimit, requestSubject } from './rate-limit'
+import { safeFetch } from './safe-fetch'
 
 export interface LookupResult {
   title: string
@@ -147,7 +70,8 @@ const TMDB_TV_GENRES: Record<number, string> = {
 export const searchTmdb = createServerFn({ method: 'GET' })
   .validator((data: { query: string; kind: 'movie' | 'tv' }) => data)
   .handler(async ({ data }): Promise<Array<LookupResult>> => {
-    await requireUser()
+    const me = await requireUser()
+    await checkRateLimit('search', me.id)
     const token = process.env.TMDB_API_TOKEN
     if (!token) return []
 
@@ -270,10 +194,23 @@ function dedupeByPriority(
 
 /** Availability per country for a movie/TV title, sorted by country name. */
 export const fetchWatchProviders = createServerFn({ method: 'GET' })
-  .validator((data: { tmdbId: string; kind: 'movie' | 'tv' }) => data)
+  .validator(
+    (data: { tmdbId: string; kind: 'movie' | 'tv'; viewCode?: string }) => data,
+  )
   .handler(async ({ data }): Promise<Array<CountryWatch>> => {
-    // No auth gate: this only proxies public TMDb availability data, so it can
-    // also power the public read-only shelf page.
+    // The data is public TMDb availability, but the *call* spends our TMDb
+    // token — so it still needs a caller. Either a signed-in user, or someone
+    // holding a live view code (which is how the public shelf page reaches
+    // it). Anonymous callers are keyed by IP and held to a tighter budget.
+    const me = await getAuthUser()
+    if (me) {
+      await checkRateLimit('search', me.id)
+    } else {
+      if (!data.viewCode) throw new Error('Not signed in')
+      await assertLiveViewCode(data.viewCode)
+      await checkRateLimit('publicLookup', requestSubject())
+    }
+
     const token = process.env.TMDB_API_TOKEN
     if (!token) return []
 
@@ -323,7 +260,8 @@ interface OpenLibraryDoc {
 export const searchBooks = createServerFn({ method: 'GET' })
   .validator((query: string) => query)
   .handler(async ({ data: query }): Promise<Array<LookupResult>> => {
-    await requireUser()
+    const me = await requireUser()
+    await checkRateLimit('search', me.id)
 
     const url = new URL('https://openlibrary.org/search.json')
     url.searchParams.set('q', query)
@@ -575,7 +513,8 @@ function extractMapsUrl(text: string): string | null {
 export const searchPlaces = createServerFn({ method: 'GET' })
   .validator((data: { query: string; kind: 'restaurant' | 'place' }) => data)
   .handler(async ({ data }): Promise<Array<LookupResult>> => {
-    await requireUser()
+    const me = await requireUser()
+    await checkRateLimit('places', me.id)
     const apiKey = process.env.GOOGLE_PLACES_API_KEY
     if (!apiKey) throw new Error('Place lookup is not configured')
 
@@ -685,7 +624,8 @@ export const fetchLinkPreview = createServerFn({ method: 'GET' })
     return parsed.toString()
   })
   .handler(async ({ data: url }): Promise<LookupResult | null> => {
-    await requireUser()
+    const me = await requireUser()
+    await checkRateLimit('linkPreview', me.id)
 
     let res: Response
     try {

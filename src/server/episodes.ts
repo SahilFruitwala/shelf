@@ -1,18 +1,36 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, eq, inArray } from 'drizzle-orm'
 
-import { items, watchedEpisodes } from '#/db/schema'
+import { items, listMembers, watchedEpisodes } from '#/db/schema'
 import { getDb } from './db-access'
-import { newId, requireMembership, requireUser } from './helpers'
+import { newId, requireUser } from './helpers'
 
-/** Loads the item, checks membership, and rejects anything that isn't a show. */
+/** Loads the item, checks membership, and rejects anything that isn't a show.
+ *
+ *  The item fetch and the membership check are one join rather than two
+ *  queries: this guard fronts every episode interaction, and at ~55ms a hop
+ *  the difference is visible on something as small as ticking a checkbox. */
 async function requireShow(itemId: string) {
   const db = await getDb()
   const me = await requireUser()
-  const item = await db.query.items.findFirst({ where: eq(items.id, itemId) })
+  const rows = await db
+    .select({ item: items })
+    .from(items)
+    .innerJoin(
+      listMembers,
+      and(
+        eq(listMembers.listId, items.listId),
+        eq(listMembers.userId, me.id),
+      ),
+    )
+    .where(eq(items.id, itemId))
+    .limit(1)
+
+  const item = rows.at(0)?.item
+  // A missing row here is either "no such item" or "not yours" — deliberately
+  // indistinguishable, so this can't be used to probe for item ids.
   if (!item) throw new Error('Item not found')
   if (item.type !== 'tv') throw new Error('Only shows have episodes')
-  await requireMembership(item.listId, me.id)
   return { db, item }
 }
 
@@ -44,14 +62,43 @@ interface TmdbEpisode {
   air_date?: string | null
 }
 
+/**
+ * Process-local TTL cache for TMDb reads.
+ *
+ * Season and episode structure changes on the order of weeks, but the app was
+ * re-fetching it every time a show card opened — a live network hop in front
+ * of the render, and quota spent re-learning the same answer. A warm
+ * serverless instance now answers most of these from memory; a cold one pays
+ * once. Nothing here is user-specific, so there's no cross-tenant leak in
+ * sharing the entry.
+ */
+const TMDB_TTL_MS = 6 * 60 * 60 * 1000
+const TMDB_CACHE_MAX = 500
+const tmdbCache = new Map<string, { at: number; value: unknown }>()
+
 async function tmdb<T>(path: string): Promise<T | null> {
   const token = process.env.TMDB_API_TOKEN
   if (!token) return null
+
+  const hit = tmdbCache.get(path)
+  if (hit && Date.now() - hit.at < TMDB_TTL_MS) return hit.value as T
+
   const res = await fetch(`https://api.themoviedb.org/3/${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
+  // Only successes are cached — a 429 or 5xx shouldn't be remembered for six
+  // hours, and a miss just costs the same call we'd have made anyway.
   if (!res.ok) return null
-  return (await res.json()) as T
+  const value = (await res.json()) as T
+
+  // Naive bound: drop the oldest insertion once we're over. Insertion order is
+  // Map's iteration order, so this is a cheap approximation of LRU.
+  if (tmdbCache.size >= TMDB_CACHE_MAX) {
+    const oldest = tmdbCache.keys().next().value
+    if (oldest !== undefined) tmdbCache.delete(oldest)
+  }
+  tmdbCache.set(path, { at: Date.now(), value })
+  return value
 }
 
 /** Season list for a show's card, with locally-tracked progress folded in.
@@ -174,6 +221,34 @@ async function syncShowProgress(itemId: string) {
   await db.update(items).set({ metadata }).where(eq(items.id, itemId))
 }
 
+/**
+ * Rows per INSERT when ticking off a whole show.
+ *
+ * Each row binds 5 parameters, so 400 rows is 2,000 — comfortably inside
+ * SQLite's variable ceiling and small enough to keep the statement well under
+ * Turso's HTTP request limit. A long-running soap can have several thousand
+ * episodes; sending those as one statement works until the day it doesn't, and
+ * it fails on the largest show rather than reproducibly.
+ */
+const WATCHED_INSERT_CHUNK = 400
+
+/** Chunked insert, sequential so a huge show can't open hundreds of parallel
+ *  requests against the remote DB. Exported for the round-trip count test. */
+export function chunkRows<T>(rows: Array<T>, size = WATCHED_INSERT_CHUNK) {
+  const out: Array<Array<T>> = []
+  for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size))
+  return out
+}
+
+async function insertWatchedInChunks(
+  db: Awaited<ReturnType<typeof getDb>>,
+  rows: Array<typeof watchedEpisodes.$inferInsert>,
+) {
+  for (const chunk of chunkRows(rows)) {
+    await db.insert(watchedEpisodes).values(chunk).onConflictDoNothing()
+  }
+}
+
 /** Tick or clear every episode across every season — backs "mark whole show
  *  watched" on the item card. */
 export const setShowWatched = createServerFn({ method: 'POST' })
@@ -227,7 +302,7 @@ export const setShowWatched = createServerFn({ method: 'POST' })
       }
     })
 
-    if (toInsert.length > 0) await db.insert(watchedEpisodes).values(toInsert)
+    await insertWatchedInChunks(db, toInsert)
     await syncShowProgress(data.itemId)
   })
 
@@ -236,30 +311,38 @@ export const toggleEpisode = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const { db } = await requireShow(data.itemId)
 
-    const existing = await db.query.watchedEpisodes.findFirst({
-      where: and(
-        eq(watchedEpisodes.itemId, data.itemId),
-        eq(watchedEpisodes.season, data.season),
-        eq(watchedEpisodes.number, data.number),
-      ),
-    })
+    // Delete-returning tells us in one hop whether the episode had been
+    // watched. If nothing came back it wasn't, so insert it. The unwatch case
+    // (the common one when correcting a mistake) costs a single round trip
+    // instead of a read followed by a write.
+    const removed = await db
+      .delete(watchedEpisodes)
+      .where(
+        and(
+          eq(watchedEpisodes.itemId, data.itemId),
+          eq(watchedEpisodes.season, data.season),
+          eq(watchedEpisodes.number, data.number),
+        ),
+      )
+      .returning({ id: watchedEpisodes.id })
 
-    if (existing) {
+    if (removed.length === 0) {
       await db
-        .delete(watchedEpisodes)
-        .where(eq(watchedEpisodes.id, existing.id))
-    } else {
-      await db.insert(watchedEpisodes).values({
-        id: newId(),
-        itemId: data.itemId,
-        season: data.season,
-        number: data.number,
-        watchedAt: new Date(),
-      })
+        .insert(watchedEpisodes)
+        .values({
+          id: newId(),
+          itemId: data.itemId,
+          season: data.season,
+          number: data.number,
+          watchedAt: new Date(),
+        })
+        // Concurrent taps on the same episode would otherwise collide on the
+        // (item, season, number) unique index.
+        .onConflictDoNothing()
     }
 
     await syncShowProgress(data.itemId)
-    return { watched: !existing }
+    return { watched: removed.length === 0 }
   })
 
 /** Tick or clear a whole season at once. */
@@ -270,7 +353,16 @@ export const setSeasonWatched = createServerFn({ method: 'POST' })
       season: number
       numbers: Array<number>
       watched: boolean
-    }) => data,
+    }) => {
+      // `numbers` arrives straight from the client and lands in an INSERT and
+      // an IN (…) clause. No real season is this long; the cap keeps a crafted
+      // request from building an unbounded statement.
+      if (data.numbers.length > 2000) throw new Error('Too many episodes')
+      const numbers = data.numbers.filter(
+        (n) => Number.isInteger(n) && n >= 0 && n <= 100_000,
+      )
+      return { ...data, numbers }
+    },
   )
   .handler(async ({ data }) => {
     const { db } = await requireShow(data.itemId)
@@ -288,17 +380,16 @@ export const setSeasonWatched = createServerFn({ method: 'POST' })
         )
       const seen = new Set(existing.map((e) => e.number))
       const missing = data.numbers.filter((n) => !seen.has(n))
-      if (missing.length > 0) {
-        await db.insert(watchedEpisodes).values(
-          missing.map((number) => ({
-            id: newId(),
-            itemId: data.itemId,
-            season: data.season,
-            number,
-            watchedAt: new Date(),
-          })),
-        )
-      }
+      await insertWatchedInChunks(
+        db,
+        missing.map((number) => ({
+          id: newId(),
+          itemId: data.itemId,
+          season: data.season,
+          number,
+          watchedAt: new Date(),
+        })),
+      )
     } else {
       await db
         .delete(watchedEpisodes)

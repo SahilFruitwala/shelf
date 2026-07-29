@@ -5,6 +5,7 @@ export async function getDb() {
 }
 
 export async function getAuthUser() {
-  const { getAuthUser } = await import('#/lib/auth.server')
-  return getAuthUser()
+  // Aliased so the import doesn't shadow the wrapper it's being called from.
+  const { getAuthUser: loadAuthUser } = await import('#/lib/auth.server')
+  return loadAuthUser()
 }

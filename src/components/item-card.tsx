@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
@@ -14,7 +14,7 @@ import {
   Tv,
 } from 'lucide-react'
 
-import type { Item, ItemType } from '#/db/schema'
+import type { Item, ItemMetadata, ItemType } from '#/db/schema'
 import { CATEGORIES, statusLabel } from '#/lib/categories'
 import {
   cn,
@@ -41,9 +41,84 @@ import {
 import { WatchWhereSkeleton } from '#/components/skeletons'
 import { EpisodeToggle, EpisodeTracker } from '#/components/episode-tracker'
 
+/** One page of `getListItems`, as cached under ['list', listId, 'items', …]. */
+export type ItemsPage = { items: Array<Item> }
+
+/**
+ * Applies a status change to one item within a cached page, leaving the page
+ * (and every other item) untouched. Pulled out of the mutation so the
+ * optimistic path can be tested without a React tree.
+ *
+ * Mirrors what `setItemStatus` does server-side, including clearing
+ * `completedAt` when a item moves back out of "done".
+ */
+export function applyStatusToPage(
+  page: ItemsPage | undefined,
+  itemId: string,
+  status: Item['status'],
+  now: Date = new Date(),
+): ItemsPage | undefined {
+  if (!page) return page
+  return {
+    ...page,
+    items: page.items.map((i) =>
+      i.id === itemId
+        ? { ...i, status, completedAt: status === 'done' ? now : null }
+        : i,
+    ),
+  }
+}
+
+/** Metadata with its absent keys dropped, for seeding controlled inputs. */
+function definedEntries(
+  metadata: ItemMetadata | null | undefined,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(metadata ?? {}).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  )
+}
+
+/** The slice of the ['list', listId] query that reactions live in. */
+export type ListWithReactions = {
+  reactionsByItem: Record<string, Array<{ userId: string; name: string }>>
+}
+
+/**
+ * Adds or removes one user's reaction to one item, immutably.
+ *
+ * Note this patches the ['list', listId] query, which is a different shape
+ * from the ['list', listId, 'items', …] pages — so it must be written with an
+ * exact key, never a prefix match, or it would corrupt the item pages.
+ */
+export function toggleReactionInList<T extends ListWithReactions>(
+  list: T | undefined,
+  itemId: string,
+  userId: string,
+  name: string,
+): T | undefined {
+  if (!list) return list
+  const current = list.reactionsByItem[itemId] ?? []
+  const reacted = current.some((r) => r.userId === userId)
+  return {
+    ...list,
+    reactionsByItem: {
+      ...list.reactionsByItem,
+      [itemId]: reacted
+        ? current.filter((r) => r.userId !== userId)
+        : [...current, { userId, name }],
+    },
+  }
+}
+
 /** Best guess at the viewer's country, for the default where-to-watch region. */
 function guessCountry(): string {
   if (typeof navigator === 'undefined') return 'US'
+  // lib.dom types `languages` as always present, but it is genuinely absent in
+  // some embedded webviews — and iterating undefined would throw. The guard
+  // stays; the rule is silenced rather than the code weakened.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   for (const loc of navigator.languages ?? [navigator.language]) {
     const region = loc.split('-')[1]
     if (region && region.length === 2) return region.toUpperCase()
@@ -51,17 +126,21 @@ function guessCountry(): string {
   return 'US'
 }
 
-/** Live "where to watch" for a movie/TV title, switchable by country. */
+/** Live "where to watch" for a movie/TV title, switchable by country.
+ *  `viewCode` is what authorizes the lookup on the public shelf page, where
+ *  there's no signed-in user to bill the call to. */
 export function WatchWhere({
   tmdbId,
   kind,
+  viewCode,
 }: {
   tmdbId: string
   kind: 'movie' | 'tv'
+  viewCode?: string
 }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['watch', kind, tmdbId],
-    queryFn: () => fetchWatchProviders({ data: { tmdbId, kind } }),
+    queryFn: () => fetchWatchProviders({ data: { tmdbId, kind, viewCode } }),
     staleTime: 1000 * 60 * 60 * 12,
   })
   const [country, setCountry] = useState<string | null>(null)
@@ -84,6 +163,9 @@ export function WatchWhere({
   const rentOnly = active.streaming.length === 0
   const shown = list.slice(0, 6)
   const extra = list.length - shown.length
+  // TMDb-supplied, but it still lands in an href — run it through the same
+  // protocol check every other outbound link in this file gets.
+  const providerLink = safeHttpUrl(active.link)
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[12px]">
@@ -95,7 +177,7 @@ export function WatchWhere({
         p.logo ? (
           <a
             key={p.name}
-            href={active.link}
+            href={providerLink}
             target="_blank"
             rel="noreferrer"
             title={p.name}
@@ -115,7 +197,7 @@ export function WatchWhere({
         ) : (
           <a
             key={p.name}
-            href={active.link}
+            href={providerLink}
             target="_blank"
             rel="noreferrer"
             className="rounded-full border border-line bg-card-deep px-2.5 py-0.5 font-medium text-ink-soft transition-colors hover:border-ink-faint hover:text-ink"
@@ -126,7 +208,7 @@ export function WatchWhere({
       )}
       {extra > 0 && (
         <a
-          href={active.link}
+          href={providerLink}
           target="_blank"
           rel="noreferrer"
           className="rounded-full px-1.5 py-0.5 text-ink-faint hover:text-ink"
@@ -191,7 +273,12 @@ function EditItemDialog({
   const [title, setTitle] = useState(item.title)
   const [link, setLink] = useState(item.link ?? '')
   const [imageUrl, setImageUrl] = useState(item.imageUrl ?? '')
-  const [meta, setMeta] = useState<Record<string, string>>(item.metadata ?? {})
+  // Form state holds concrete strings — an undefined value would flip the
+  // input to uncontrolled. Absent keys are dropped rather than carried
+  // through as undefined.
+  const [meta, setMeta] = useState<Record<string, string>>(() =>
+    definedEntries(item.metadata),
+  )
 
   // Reset the draft whenever a fresh item is opened for editing.
   useEffect(() => {
@@ -199,7 +286,7 @@ function EditItemDialog({
       setTitle(item.title)
       setLink(item.link ?? '')
       setImageUrl(item.imageUrl ?? '')
-      setMeta(item.metadata ?? {})
+      setMeta(definedEntries(item.metadata))
     }
   }, [open, item])
 
@@ -459,7 +546,7 @@ function ItemMenu({
   )
 }
 
-export function ItemCard({
+function ItemCardImpl({
   item,
   listId,
   showType,
@@ -473,13 +560,14 @@ export function ItemCard({
   selected,
   onToggleSelect,
   onShowOnMap,
+  canShowOnMap,
   compact,
   mapActive,
 }: {
   item: Item
   listId: string
   showType: boolean
-  memberNames: Map<string, string>
+  memberNames: ReadonlyMap<string, string>
   showGroup?: boolean
   reactions?: Array<{ userId: string; name: string }>
   myUserId?: string
@@ -487,8 +575,14 @@ export function ItemCard({
   distanceKm?: number | null
   selectable?: boolean
   selected?: boolean
-  onToggleSelect?: () => void
-  onShowOnMap?: () => void
+  /** Take the item id rather than closing over it, so the parent can pass one
+   *  stable callback for every row instead of a fresh arrow per render —
+   *  otherwise the memo below never gets a cache hit. */
+  onToggleSelect?: (id: string) => void
+  onShowOnMap?: (item: Item) => void
+  /** Whether this row can be pinned; separate from `onShowOnMap` so that
+   *  callback can stay referentially stable across rows. */
+  canShowOnMap?: boolean
   /** Tighter row layout for map split view */
   compact?: boolean
   mapActive?: boolean
@@ -509,10 +603,37 @@ export function ItemCard({
     await queryClient.invalidateQueries({ queryKey: ['activity'] })
   }
 
+  /**
+   * Status is the highest-frequency action on a shelf, and it used to wait a
+   * full round trip before anything moved: the mutation, then a refetch of the
+   * whole paginated list. The checkmark now flips immediately and the refetch
+   * happens behind it.
+   *
+   * Every cached page of this shelf gets patched, not just the visible one —
+   * the query key carries the filter/sort/page, so prefix matching catches the
+   * pages the user has already paged through.
+   */
   const setStatus = useMutation({
     mutationFn: (status: Item['status']) =>
       setItemStatus({ data: { itemId: item.id, status } }),
-    onSuccess: invalidate,
+    onMutate: async (status) => {
+      const key = ['list', listId, 'items']
+      // Stop any in-flight refetch from landing on top of the patch.
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueriesData<ItemsPage>({ queryKey: key })
+      queryClient.setQueriesData<ItemsPage>({ queryKey: key }, (old) =>
+        applyStatusToPage(old, item.id, status),
+      )
+      return { previous }
+    },
+    onError: (_err, _status, ctx) => {
+      for (const [key, data] of ctx?.previous ?? []) {
+        queryClient.setQueryData(key, data)
+      }
+    },
+    // Runs on both paths: the server is still the authority on counts, on
+    // whether the item still matches the active filter, and on activity.
+    onSettled: invalidate,
   })
   // Marking a show watched from the card also ticks off every episode.
   const setAllEpisodesWatched = useMutation({
@@ -537,7 +658,27 @@ export function ItemCard({
   })
   const react = useMutation({
     mutationFn: () => toggleReaction({ data: item.id }),
-    onSuccess: invalidate,
+    onMutate: async () => {
+      if (!myUserId) return
+      const key = ['list', listId]
+      // Exact — a prefix match would also hit the paginated item queries,
+      // which have an entirely different shape.
+      await queryClient.cancelQueries({ queryKey: key, exact: true })
+      const previous = queryClient.getQueryData<ListWithReactions>(key)
+      // My own name isn't rendered for my own reaction (the button state is),
+      // so the fallback here is cosmetic and never reaches the screen.
+      const myName = memberNames.get(myUserId) ?? 'You'
+      queryClient.setQueryData<ListWithReactions>(key, (old) =>
+        toggleReactionInList(old, item.id, myUserId, myName),
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(['list', listId], ctx.previous)
+      }
+    },
+    onSettled: invalidate,
   })
 
   const done = item.status === 'done'
@@ -575,20 +716,29 @@ export function ItemCard({
   const tmdbKind = item.metadata?.tmdbKind?.trim()
   const showWatch = !!tmdbId && (tmdbKind === 'movie' || tmdbKind === 'tv')
 
+  // Re-close the id/item over the parent's stable callbacks. These arrows are
+  // recreated per render, but only ever land on DOM props — they're inside the
+  // memo boundary, so they don't defeat it.
+  const handleToggleSelect = onToggleSelect
+    ? () => onToggleSelect(item.id)
+    : undefined
+  const handleShowOnMap =
+    canShowOnMap && onShowOnMap ? () => onShowOnMap(item) : undefined
+
   if (compact) {
     const meta = [subtitle, item.notes].filter(Boolean).join(' · ')
     return (
       <>
         <article
-          role={onShowOnMap ? 'button' : undefined}
-          tabIndex={onShowOnMap ? 0 : undefined}
-          onClick={onShowOnMap}
+          role={handleShowOnMap ? 'button' : undefined}
+          tabIndex={handleShowOnMap ? 0 : undefined}
+          onClick={handleShowOnMap}
           onKeyDown={
-            onShowOnMap
+            handleShowOnMap
               ? (e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
-                    onShowOnMap()
+                    handleShowOnMap()
                   }
                 }
               : undefined
@@ -598,7 +748,7 @@ export function ItemCard({
             mapActive
               ? 'border-cat-trip/40 bg-cat-trip/10 ring-1 ring-cat-trip/20'
               : 'border-line bg-card hover:border-ink-faint/60',
-            onShowOnMap && 'cursor-pointer',
+            handleShowOnMap && 'cursor-pointer',
             abandoned && 'opacity-60',
             selectable && selected && 'ring-2 ring-accent',
           )}
@@ -611,7 +761,7 @@ export function ItemCard({
               <input
                 type="checkbox"
                 checked={selected}
-                onChange={onToggleSelect}
+                onChange={handleToggleSelect}
                 className="size-4 cursor-pointer accent-accent"
                 aria-label={`Select ${item.title}`}
               />
@@ -712,7 +862,7 @@ export function ItemCard({
           <input
             type="checkbox"
             checked={selected}
-            onChange={onToggleSelect}
+            onChange={handleToggleSelect}
             className="size-4 cursor-pointer accent-accent"
             aria-label={`Select ${item.title}`}
           />
@@ -782,10 +932,10 @@ export function ItemCard({
             </p>
           </div>
           <div className="flex shrink-0 items-start gap-1">
-            {onShowOnMap && (
+            {handleShowOnMap && (
               <button
                 type="button"
-                onClick={onShowOnMap}
+                onClick={handleShowOnMap}
                 title="Show on map"
                 className="cursor-pointer rounded-full border border-line bg-card-deep p-1.5 text-ink-soft transition-colors hover:border-ink-faint hover:text-ink"
               >
@@ -850,9 +1000,7 @@ export function ItemCard({
           </button>
         )}
 
-        {showWatch && (
-          <WatchWhere tmdbId={tmdbId!} kind={tmdbKind as 'movie' | 'tv'} />
-        )}
+        {showWatch && <WatchWhere tmdbId={tmdbId} kind={tmdbKind} />}
 
         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
           <div className="flex flex-wrap items-center gap-1">
@@ -973,3 +1121,15 @@ export function ItemCard({
     </article>
   )
 }
+
+/**
+ * A shelf renders up to `perPage` of these, and the card is heavy — nested
+ * dialogs, its own queries, a lot of derived layout. Without memo, unrelated
+ * parent state (opening a filter menu, typing in the search box, moving the
+ * map) re-rendered every visible card.
+ *
+ * The default shallow prop comparison is enough now that the parent hands down
+ * stable callbacks and a memoized `memberNames`; `item` and `reactions` come
+ * straight from query data, so their identity only changes when the data does.
+ */
+export const ItemCard = memo(ItemCardImpl)

@@ -102,7 +102,7 @@ async function main() {
       for (const { table, column, key } of FK_COLUMNS) {
         await db
           .update(table)
-          .set({ [key]: clerkId } as never)
+          .set({ [key]: clerkId })
           .where(eq(column, row.id))
       }
     } finally {

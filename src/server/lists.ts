@@ -51,24 +51,32 @@ export const getMyLists = createServerFn({ method: 'GET' }).handler(
       .where(inArray(lists.id, listIds))
       .orderBy(desc(lists.createdAt))
 
-    // Up to four recent item images per list for the cover strip.
-    const covers = await db
-      .select({
-        listId: items.listId,
-        imageUrl: items.imageUrl,
-      })
-      .from(items)
-      .where(inArray(items.listId, listIds))
-      .orderBy(desc(items.createdAt))
+    // Up to four recent item images per list for the cover strip. The ranking
+    // happens in SQL so this returns at most 4 rows per shelf — selecting every
+    // item the user owns just to keep the first few of each meant shipping
+    // thousands of rows over the wire to render a couple dozen thumbnails.
+    const covers = await db.all<{ list_id: string; image_url: string }>(sql`
+      select list_id, image_url from (
+        select
+          list_id,
+          image_url,
+          row_number() over (
+            partition by list_id order by created_at desc, id desc
+          ) as rn
+        from items
+        where list_id in (${sql.join(
+          listIds.map((id) => sql`${id}`),
+          sql`, `,
+        )}) and image_url is not null
+      )
+      where rn <= 4
+    `)
 
     const coverMap = new Map<string, Array<string>>()
     for (const c of covers) {
-      if (!c.imageUrl) continue
-      const arr = coverMap.get(c.listId) ?? []
-      if (arr.length < 4) {
-        arr.push(c.imageUrl)
-        coverMap.set(c.listId, arr)
-      }
+      const arr = coverMap.get(c.list_id) ?? []
+      arr.push(c.image_url)
+      coverMap.set(c.list_id, arr)
     }
 
     const result = rows.map((r) => ({

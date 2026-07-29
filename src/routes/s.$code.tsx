@@ -40,6 +40,9 @@ function useIsDark() {
 }
 
 function PublicItemCard({ item }: { item: PublicItem }) {
+  // There's no signed-in user here, so the view code is what authorizes the
+  // where-to-watch lookup.
+  const { code } = Route.useParams()
   const config = CATEGORIES[item.type]
   const Icon = config.icon
   const done = item.status === 'done'
@@ -109,7 +112,7 @@ function PublicItemCard({ item }: { item: PublicItem }) {
               {subtitle}
             </p>
             {showWatch && (
-              <WatchWhere tmdbId={tmdbId!} kind={tmdbKind as 'movie' | 'tv'} />
+              <WatchWhere tmdbId={tmdbId} kind={tmdbKind} viewCode={code} />
             )}
             {coords && (
               <a

@@ -54,6 +54,23 @@ export const userFeatureFlags = sqliteTable('user_feature_flags', {
 
 export type UserFeatureFlags = typeof userFeatureFlags.$inferSelect
 
+// ---------- Rate limiting ----------
+// Fixed-window counters for the outbound API proxies (TMDb, Places, link
+// previews). Lives in the DB rather than in memory because the serverless
+// runtime gives no shared process to count in — a per-instance counter would
+// let the limit scale with however many instances Vercel happens to spin up.
+
+export const rateLimits = sqliteTable('rate_limits', {
+  // `${bucket}:${subject}` — subject is a user id, or an ip for anonymous hits.
+  key: text('key').primaryKey(),
+  count: integer('count').notNull().default(0),
+  // Epoch seconds, as a plain integer rather than a `mode: 'timestamp'`
+  // column. The limiter does its window arithmetic inside a raw SQL CASE,
+  // where drizzle's timestamp mapper doesn't apply — a bound Date lands there
+  // in the wrong unit and silently corrupts the window.
+  windowStart: integer('window_start').notNull(),
+})
+
 // ---------- Shelf tables ----------
 
 export const ITEM_TYPES = [
@@ -71,6 +88,17 @@ export type ListType = (typeof LIST_TYPES)[number]
 
 export const ITEM_STATUSES = ['to_try', 'done', 'abandoned'] as const
 export type ItemStatus = (typeof ITEM_STATUSES)[number]
+
+/**
+ * Type-specific extras on an item: author, year, cuisine, address, price…
+ *
+ * Values are `string | undefined` rather than `string` because this is a
+ * sparse bag — any given key is usually absent. A plain
+ * `Record<string, string>` would tell TypeScript every key always exists,
+ * which made correct guards like `metadata?.group?.trim()` read as redundant
+ * while being the only thing standing between us and a runtime throw.
+ */
+export type ItemMetadata = Record<string, string | undefined>
 
 export const lists = sqliteTable(
   'lists',
@@ -133,9 +161,13 @@ export const items = sqliteTable(
     imageUrl: text('image_url'),
     status: text('status', { enum: ITEM_STATUSES }).notNull().default('to_try'),
     // Type-specific extras: author, year, cuisine, address, price...
-    metadata: text('metadata', { mode: 'json' }).$type<
-      Record<string, string>
-    >(),
+    //
+    // The value type is `string | undefined`, not `string`: this is a sparse
+    // bag of optional keys, and a plain `Record<string, string>` would claim
+    // every key always exists. That made honest guards like
+    // `metadata?.group?.trim()` look redundant to the linter while being the
+    // only thing preventing a runtime throw on a missing key.
+    metadata: text('metadata', { mode: 'json' }).$type<ItemMetadata>(),
     addedBy: text('added_by')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),

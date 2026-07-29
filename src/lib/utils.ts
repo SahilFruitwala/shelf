@@ -2,6 +2,8 @@ import type { ClassValue } from 'clsx'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
+import type { ItemMetadata } from '#/db/schema'
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -67,7 +69,7 @@ export function formatDistance(km: number): string {
 }
 
 export function itemCoords(
-  metadata?: Record<string, string> | null,
+  metadata?: ItemMetadata | null,
 ): { lat: number; lng: number } | null {
   if (!metadata?.lat || !metadata.lng) return null
   const lat = Number(metadata.lat)
@@ -92,7 +94,7 @@ export function mapsDirectionsUrl(
 
 /** Collect unique, sorted day/group labels from shelf items. */
 export function existingDayGroups(
-  items: Array<{ metadata?: Record<string, string> | null }>,
+  items: Array<{ metadata?: ItemMetadata | null }>,
 ): Array<string> {
   const groups = new Set<string>()
   for (const item of items) {

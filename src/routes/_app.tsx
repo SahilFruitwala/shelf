@@ -9,8 +9,7 @@ import {
 import { BookOpen, Dumbbell, LogOut, Settings } from 'lucide-react'
 import { useClerk } from '@clerk/tanstack-react-start'
 
-import { getSessionUser } from '#/server/auth'
-import { getMyFeatures } from '#/server/features'
+import { getAppBootstrap } from '#/server/auth'
 import { ThemeToggle } from '#/components/theme-toggle'
 import { cn } from '#/lib/utils'
 import { seo } from '#/lib/seo'
@@ -18,13 +17,12 @@ import { seo } from '#/lib/seo'
 export const Route = createFileRoute('/_app')({
   head: () => ({ meta: seo({ noindex: true }) }),
   beforeLoad: async ({ location }) => {
-    const user = await getSessionUser()
+    const { user, userFeatures } = await getAppBootstrap()
     if (!user) {
       // Bare visits get the landing page; deep links go to login and bounce back.
       if (location.pathname === '/') throw redirect({ to: '/welcome' })
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
-    const userFeatures = await getMyFeatures()
     return { user, userFeatures }
   },
   component: AppLayout,

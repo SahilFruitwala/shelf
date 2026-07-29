@@ -13,10 +13,10 @@
 import { config } from 'dotenv'
 import { createClient } from '@libsql/client/node'
 import { drizzle } from 'drizzle-orm/libsql'
-import { and, isNotNull, lte } from 'drizzle-orm'
+import { and, isNotNull, lt, lte } from 'drizzle-orm'
 
 import * as schema from '../src/db/schema.ts'
-import { user } from '../src/db/schema.ts'
+import { rateLimits, user } from '../src/db/schema.ts'
 
 config({ path: ['.env.local', '.env'] })
 
@@ -48,6 +48,13 @@ async function main() {
   await db
     .delete(user)
     .where(and(isNotNull(user.purgeAfter), lte(user.purgeAfter, now)))
+
+  // Rate-limit counters are write-only garbage once their window closes, and
+  // nothing else ever deletes them. An hour back is well clear of the longest
+  // window, so anything older can't affect a live decision.
+  const staleBefore = Math.floor(now.getTime() / 1000) - 3600
+  await db.delete(rateLimits).where(lt(rateLimits.windowStart, staleBefore))
+
   console.log('Purge complete.')
 }
 
