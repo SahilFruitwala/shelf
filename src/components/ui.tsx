@@ -158,7 +158,9 @@ export function Modal({
       // Defer to the field marked data-autofocus instead. (React's autoFocus
       // prop never reaches the DOM, so it can't be queried here.)
       requestAnimationFrame(() => {
-        dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus()
+        dialog
+          .querySelector<HTMLElement>('[data-autofocus]')
+          ?.focus({ preventScroll: true })
       })
     }
     if (!open && dialog.open) dialog.close()

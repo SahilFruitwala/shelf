@@ -50,7 +50,7 @@ function SearchPicker({
   const debouncedQuery = useDebounced(query.trim(), 350)
 
   useLayoutEffect(() => {
-    inputRef.current?.focus()
+    inputRef.current?.focus({ preventScroll: true })
   }, [])
   const isPlaces =
     config.lookup === 'places' || config.lookup === 'places-restaurant'
@@ -182,7 +182,7 @@ function LinkPicker({
   const [failed, setFailed] = useState(false)
 
   useLayoutEffect(() => {
-    inputRef.current?.focus()
+    inputRef.current?.focus({ preventScroll: true })
   }, [])
 
   const fetchPreview = useMutation({

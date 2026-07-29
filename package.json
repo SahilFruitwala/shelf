@@ -54,7 +54,8 @@
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "^4.1.18",
-    "tw-animate-css": "^1.3.6"
+    "tw-animate-css": "^1.3.6",
+    "undici": "^7.28.0"
   },
   "devDependencies": {
     "@clerk/backend": "^3.12.0",
