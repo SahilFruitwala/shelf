@@ -6,7 +6,7 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
-import { BookOpen, Dumbbell, LogOut, Settings } from 'lucide-react'
+import { BookOpen, LogOut, Settings } from 'lucide-react'
 import { useClerk } from '@clerk/tanstack-react-start'
 
 import { getAppBootstrap } from '#/server/auth'
@@ -43,18 +43,6 @@ function AppLayout() {
             <span className="text-cat-restaurant">.</span>
           </Link>
           <nav className="flex items-center gap-1">
-            <Link
-              to="/workouts"
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-                pathname.startsWith('/workouts')
-                  ? 'bg-card-deep text-ink'
-                  : 'text-ink-soft hover:bg-card-deep hover:text-ink',
-              )}
-            >
-              <Dumbbell className="size-3.5" />
-              Workouts
-            </Link>
             <Link
               to="/exercises"
               className={cn(
