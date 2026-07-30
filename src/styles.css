@@ -102,6 +102,12 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* showModal() blocks page scroll in Chrome but leaks it through on iOS Safari,
+   so the page scrolls behind an open sheet. Lock it explicitly. */
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
 /* Filter / status pill — active state reads as selected, not inverted chrome. */
 .pill-active {
   background: var(--ink);

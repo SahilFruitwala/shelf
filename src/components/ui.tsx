@@ -175,36 +175,50 @@ export function Modal({
         if (e.target === ref.current) onClose()
       }}
       className={cn(
+        // The dialog is only a full-screen, transparent POSITIONING SHELL — the
+        // sheet itself is the inner panel. Anchoring the panel with flexbox
+        // avoids the UA `inset: 0; margin: auto` auto-margin resolution, which
+        // resolves against the large viewport on iOS Safari and drops the sheet
+        // below the URL bar. h-dvh tracks the *visible* viewport instead.
         // `open:flex` (not bare `flex`) so a CLOSED dialog keeps the browser's
-        // default display:none — otherwise every mounted-but-closed dialog
-        // would render inline. min-h-0 lets the body scroll region shrink so
-        // long forms scroll inside the sheet instead of overflowing off-screen.
-        'glow-card flex-col p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm open:flex open:animate-in open:duration-200',
-        // Phones: bottom sheet flush to the edges — full width, pinned to the
-        // bottom (mt-auto), only the top corners rounded, slides up.
-        // max-w-none overrides the UA dialog `max-width: calc(100% - 6px - 2em)`,
-        // which would otherwise inset the sheet from both edges.
-        'mx-auto mt-auto mb-0 max-h-[85dvh] w-full max-w-none rounded-t-(--radius-card) rounded-b-none open:slide-in-from-bottom-4',
-        // sm and up: the classic centered card.
-        'sm:m-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:rounded-(--radius-card) sm:open:fade-in sm:open:zoom-in-95 sm:open:slide-in-from-bottom-0',
-        wide ? 'sm:max-w-xl' : 'sm:max-w-md',
+        // default display:none.
+        'fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none border-0 bg-transparent p-0 text-ink',
+        'flex-col items-center justify-end backdrop:bg-black/60 backdrop:backdrop-blur-sm',
+        'open:flex open:animate-in open:duration-200 open:slide-in-from-bottom-4',
+        'sm:justify-center sm:open:fade-in sm:open:zoom-in-95 sm:open:slide-in-from-bottom-0',
       )}
     >
-      {/* Pinned header — stays visible while the body below scrolls. */}
-      <div className="shrink-0 flex items-center justify-between gap-4 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
-        <h2 className="text-hero font-display text-xl font-semibold">{title}</h2>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="shrink-0 cursor-pointer rounded-full p-1.5 text-ink-faint hover:bg-card-deep hover:text-ink"
-        >
-          <X className="size-4.5" />
-        </button>
-      </div>
-      {/* Bottom padding clears the home indicator when the sheet sits flush
-          against the bottom edge (viewport-fit=cover). */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-6">
-        {children}
+      <div
+        className={cn(
+          // min-h-0 lets the body scroll region shrink so long forms scroll
+          // inside the sheet instead of overflowing off-screen.
+          'glow-card flex max-h-[85dvh] min-h-0 w-full flex-col shadow-2xl',
+          // Phones: flush to the edges, only the top corners rounded.
+          'rounded-t-(--radius-card) rounded-b-none',
+          // sm and up: the classic centered card.
+          'sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:rounded-(--radius-card)',
+          wide ? 'sm:max-w-xl' : 'sm:max-w-md',
+        )}
+      >
+        {/* Pinned header — stays visible while the body below scrolls. */}
+        <div className="flex shrink-0 items-center justify-between gap-4 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
+          <h2 className="text-hero font-display text-xl font-semibold">
+            {title}
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="shrink-0 cursor-pointer rounded-full p-1.5 text-ink-faint hover:bg-card-deep hover:text-ink"
+          >
+            <X className="size-4.5" />
+          </button>
+        </div>
+        {/* Bottom padding clears the home indicator when the sheet sits flush
+            against the bottom edge (viewport-fit=cover). overscroll-contain
+            stops a flick at the end of this list from scrolling the page. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-6">
+          {children}
+        </div>
       </div>
     </dialog>
   )
