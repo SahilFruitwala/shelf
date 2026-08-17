@@ -41,15 +41,24 @@ export const getMyLists = createServerFn({ method: 'GET' }).handler(
     const rows = await db
       .select({
         list: lists,
-        // Qualified names written out: interpolating lists.id renders an
-        // unqualified "id" that resolves to the inner table's scope.
         memberCount: sql<number>`(select count(*) from list_members where list_members.list_id = lists.id)`,
-        itemCount: sql<number>`(select count(*) from items where items.list_id = lists.id)`,
-        toTryCount: sql<number>`(select count(*) from items where items.list_id = lists.id and status = 'to_try')`,
       })
       .from(lists)
       .where(inArray(lists.id, listIds))
       .orderBy(desc(lists.createdAt))
+
+    // Compute both item totals in one indexed pass. Two correlated count
+    // subqueries used to walk every shelf twice.
+    const itemCounts = await db
+      .select({
+        listId: items.listId,
+        itemCount: sql<number>`count(*)`,
+        toTryCount: sql<number>`sum(case when ${items.status} = 'to_try' then 1 else 0 end)`,
+      })
+      .from(items)
+      .where(inArray(items.listId, listIds))
+      .groupBy(items.listId)
+    const countsByList = new Map(itemCounts.map((r) => [r.listId, r]))
 
     // Up to four recent item images per list for the cover strip. The ranking
     // happens in SQL so this returns at most 4 rows per shelf — selecting every
@@ -82,8 +91,8 @@ export const getMyLists = createServerFn({ method: 'GET' }).handler(
     const result = rows.map((r) => ({
       ...r.list,
       memberCount: r.memberCount,
-      itemCount: r.itemCount,
-      toTryCount: r.toTryCount,
+      itemCount: countsByList.get(r.list.id)?.itemCount ?? 0,
+      toTryCount: countsByList.get(r.list.id)?.toTryCount ?? 0,
       coverImages: coverMap.get(r.list.id) ?? [],
       isOwner: r.list.ownerId === me.id,
     }))
@@ -119,20 +128,16 @@ export const getList = createServerFn({ method: 'GET' })
 
     // Items themselves come from the paginated getListItems — a shelf can hold
     // thousands, so only the aggregates the toolbar needs are computed here.
-    const [statusRows, genreRows, members, reactions] = await Promise.all([
+    const [summaryRows, members, reactions] = await Promise.all([
       db
-        .select({ status: items.status, count: sql<number>`count(*)` })
-        .from(items)
-        .where(eq(items.listId, listId))
-        .groupBy(items.status),
-      db
-        .selectDistinct({
-          // `->>` (not json_extract) so this hits items_list_genre_idx as a
-          // covering index — the two spellings don't match for the planner.
+        .select({
+          status: items.status,
           genre: sql<string | null>`items.metadata ->> '$.genre'`,
+          count: sql<number>`count(*)`,
         })
         .from(items)
-        .where(eq(items.listId, listId)),
+        .where(eq(items.listId, listId))
+        .groupBy(items.status, sql`items.metadata ->> '$.genre'`),
       db
         .select({
           userId: listMembers.userId,
@@ -146,15 +151,15 @@ export const getList = createServerFn({ method: 'GET' })
     ])
 
     const counts = { all: 0, to_try: 0, done: 0, abandoned: 0 }
-    for (const r of statusRows) {
-      counts[r.status] = r.count
+    for (const r of summaryRows) {
+      counts[r.status] += r.count
       counts.all += r.count
     }
 
     // Rows are whole "Action, Comedy" strings — split them into a flat set.
     const genreOptions = [
       ...new Set(
-        genreRows.flatMap((r) =>
+        summaryRows.flatMap((r) =>
           (r.genre ?? '')
             .split(',')
             .map((g) => g.trim())

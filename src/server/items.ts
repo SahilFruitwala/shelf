@@ -63,6 +63,7 @@ export const addItem = createServerFn({ method: 'POST' })
       listId,
       type: data.type,
       title: data.title,
+      normalizedTitle: normalizeTitle(data.title),
       notes: data.notes,
       link: data.link,
       imageUrl: data.imageUrl,
@@ -73,7 +74,14 @@ export const addItem = createServerFn({ method: 'POST' })
       title: data.title,
       type: data.type,
     })
-    return { id, listId }
+    return {
+      id,
+      listId,
+      type: data.type,
+      status: 'to_try' as const,
+      imageUrl: data.imageUrl,
+      genre: data.metadata?.genre,
+    }
   })
 
 /** Title matches already on this shelf — for duplicate warnings at add-time. */
@@ -93,16 +101,16 @@ export const findDuplicatesOnShelf = createServerFn({ method: 'GET' })
       : await getOrCreateDefaultList(me.id, data.type)
 
     const normalized = normalizeTitle(data.title)
-    const shelfItems = await db
+    return db
       .select({
         id: items.id,
         title: items.title,
         status: items.status,
       })
       .from(items)
-      .where(eq(items.listId, listId))
-
-    return shelfItems.filter((i) => normalizeTitle(i.title) === normalized)
+      .where(
+        and(eq(items.listId, listId), eq(items.normalizedTitle, normalized)),
+      )
   })
 
 export const ITEM_SORTS = ['recent', 'alpha', 'completed'] as const
@@ -212,7 +220,10 @@ export const getListItems = createServerFn({ method: 'GET' })
     // and that's the overwhelming majority of requests.
     const requestedPage = Math.max(Math.trunc(data.page ?? 1), 1)
     const [countRows, requestedRows] = await Promise.all([
-      db.select({ total: sql<number>`count(*)` }).from(items).where(filter),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(items)
+        .where(filter),
       pageQuery(requestedPage),
     ])
 
@@ -252,6 +263,7 @@ export const updateItem = createServerFn({ method: 'POST' })
       .update(items)
       .set({
         ...(title !== undefined && { title }),
+        ...(title !== undefined && { normalizedTitle: normalizeTitle(title) }),
         ...(data.notes !== undefined && { notes: data.notes.trim() || null }),
         ...(data.link !== undefined && {
           link: safeHttpUrl(data.link) ?? null,

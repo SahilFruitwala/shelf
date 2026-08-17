@@ -11,6 +11,7 @@ function item(id: string, status: Item['status'] = 'to_try'): Item {
     listId: 'shelf-1',
     type: 'movie',
     title: `Item ${id}`,
+    normalizedTitle: `item ${id}`,
     status,
     completedAt: null,
     notes: null,
@@ -29,7 +30,11 @@ describe('applyStatusToPage', () => {
     const page: ItemsPage = { items: [item('a'), item('b'), item('c')] }
     const next = applyStatusToPage(page, 'b', 'done', NOW)!
 
-    expect(next.items.map((i) => i.status)).toEqual(['to_try', 'done', 'to_try'])
+    expect(next.items.map((i) => i.status)).toEqual([
+      'to_try',
+      'done',
+      'to_try',
+    ])
     expect(next.items[1].completedAt).toEqual(NOW)
     expect(next.items[0].completedAt).toBeNull()
   })
@@ -82,7 +87,9 @@ describe('optimistic cache patching', () => {
     ]
 
     qc.setQueryData(key('shelf-1', 'all', 1), { items: [item('a')] })
-    qc.setQueryData(key('shelf-1', 'to_try', 2), { items: [item('a'), item('b')] })
+    qc.setQueryData(key('shelf-1', 'to_try', 2), {
+      items: [item('a'), item('b')],
+    })
     qc.setQueryData(key('shelf-2', 'all', 1), { items: [item('a')] })
 
     qc.setQueriesData<ItemsPage>(
@@ -183,6 +190,8 @@ describe('toggleReactionInList', () => {
   })
 
   it('passes undefined through for an uncached list', () => {
-    expect(toggleReactionInList(undefined, 'item-1', 'me', 'Sam')).toBeUndefined()
+    expect(
+      toggleReactionInList(undefined, 'item-1', 'me', 'Sam'),
+    ).toBeUndefined()
   })
 })

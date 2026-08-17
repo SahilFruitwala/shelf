@@ -30,7 +30,9 @@ vi.mock('#/server/items', () => ({
 }))
 vi.mock('#/server/episodes', () => ({ setShowWatched: vi.fn() }))
 vi.mock('#/server/lists', () => ({ getMyLists: vi.fn(async () => []) }))
-vi.mock('#/server/lookup', () => ({ fetchWatchProviders: vi.fn(async () => []) }))
+vi.mock('#/server/lookup', () => ({
+  fetchWatchProviders: vi.fn(async () => []),
+}))
 vi.mock('#/server/reactions', () => ({ toggleReaction: vi.fn() }))
 vi.mock('#/components/episode-tracker', () => ({
   EpisodeToggle: () => null,
@@ -45,6 +47,7 @@ function makeItem(id: string): Item {
     listId: 'shelf-1',
     type: 'book',
     title: `Item ${id}`,
+    normalizedTitle: `item ${id}`,
     status: 'to_try',
     completedAt: null,
     notes: null,

@@ -10,6 +10,7 @@ import { isMultiTypeShelf } from '#/lib/list-types'
 import { cn } from '#/lib/utils'
 import { addItem, findDuplicatesOnShelf } from '#/server/items'
 import { getMyLists } from '#/server/lists'
+import type { getList } from '#/server/lists'
 import {
   fetchLinkPreview,
   searchBooks,
@@ -27,6 +28,9 @@ import {
   Textarea,
 } from '#/components/ui'
 import { MediaListSkeleton, SkeletonScreen } from '#/components/skeletons'
+
+type MyLists = Awaited<ReturnType<typeof getMyLists>>
+type ListDetail = Awaited<ReturnType<typeof getList>>
 
 function useDebounced(value: string, ms: number) {
   const [debounced, setDebounced] = useState(value)
@@ -328,10 +332,47 @@ export function AddItemDialog({
       })
     },
     onSuccess: async (result) => {
+      // The mutation tells us everything needed to update the cheap summary
+      // caches. Avoid refetching shelf-wide counts, genres and cover queries.
+      queryClient.setQueryData<ListDetail>(
+        ['list', result.listId],
+        (current) => {
+          if (!current) return current
+          const genre = result.genre?.trim()
+          return {
+            ...current,
+            counts: {
+              ...current.counts,
+              all: current.counts.all + 1,
+              to_try: current.counts.to_try + 1,
+            },
+            genreOptions:
+              genre && !current.genreOptions.includes(genre)
+                ? [...current.genreOptions, genre].sort((a, b) =>
+                    a.localeCompare(b),
+                  )
+                : current.genreOptions,
+          }
+        },
+      )
+      queryClient.setQueryData<MyLists>(['lists'], (current) =>
+        current?.map((list) =>
+          list.id === result.listId
+            ? {
+                ...list,
+                itemCount: list.itemCount + 1,
+                toTryCount: list.toTryCount + 1,
+                coverImages:
+                  result.imageUrl && !list.coverImages.includes(result.imageUrl)
+                    ? [result.imageUrl, ...list.coverImages].slice(0, 4)
+                    : list.coverImages,
+              }
+            : list,
+        ),
+      )
       await queryClient.invalidateQueries({
-        queryKey: ['list', result.listId],
+        queryKey: ['list', result.listId, 'items'],
       })
-      await queryClient.invalidateQueries({ queryKey: ['lists'] })
       await queryClient.invalidateQueries({ queryKey: ['activity'] })
       close()
     },

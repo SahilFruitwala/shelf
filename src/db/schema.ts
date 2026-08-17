@@ -156,6 +156,9 @@ export const items = sqliteTable(
       .references(() => lists.id, { onDelete: 'cascade' }),
     type: text('type', { enum: ITEM_TYPES }).notNull(),
     title: text('title').notNull(),
+    // Maintained by item mutations so duplicate checks can use an index
+    // instead of loading and normalizing every title on the shelf.
+    normalizedTitle: text('normalized_title'),
     notes: text('notes'),
     link: text('link'),
     imageUrl: text('image_url'),
@@ -178,6 +181,7 @@ export const items = sqliteTable(
   },
   (t) => [
     index('items_list_idx').on(t.listId),
+    index('items_list_normalized_title_idx').on(t.listId, t.normalizedTitle),
     index('items_list_status_created_idx').on(
       t.listId,
       t.status,
