@@ -19,7 +19,7 @@ tracking recommendations, solo or shared.
 ## Stack
 
 TanStack Start · React 19 · TanStack Query/Router · Drizzle ORM ·
-Turso/libSQL · better-auth (email + password) · Tailwind v4 · Motion
+Turso/libSQL · Clerk (email + password) · Tailwind v4 · Motion
 (Aceternity-style UI: dark-first zinc + emerald, spotlight, hover highlights)
 
 ## Setup
@@ -32,14 +32,15 @@ bun run dev               # http://localhost:3000
 
 ### Environment (`.env.local`)
 
-| Variable                | Purpose                                                                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`          | `file:dev.db` locally, `libsql://<db>.turso.io` in production                                                                                     |
-| `DATABASE_AUTH_TOKEN`   | Turso auth token (production only)                                                                                                                |
-| `BETTER_AUTH_URL`       | The app's public URL                                                                                                                              |
-| `BETTER_AUTH_SECRET`    | Any long random string                                                                                                                            |
-| `TMDB_API_TOKEN`        | TMDb **API Read Access Token** (v4) from themoviedb.org → Settings → API. Without it, movie/TV search returns nothing (manual entry still works). |
-| `GOOGLE_PLACES_API_KEY` | Google Places API (New) key. Without it, restaurant/place search returns nothing (manual entry still works).                                      |
+| Variable                       | Purpose                                                                                                                                        |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                 | `file:dev.db` locally, `libsql://<db>.turso.io` in production                                                                                  |
+| `DATABASE_AUTH_TOKEN`          | Turso auth token (production only)                                                                                                             |
+| `CLERK_SECRET_KEY`             | Clerk secret key from the Clerk dashboard                                                                                                      |
+| `CLERK_PUBLISHABLE_KEY`        | Clerk publishable key; ships in the client bundle                                                                                              |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | Signing secret for Clerk webhooks (user creation/deletion sync)                                                                                |
+| `TMDB_API_TOKEN`               | TMDb **API Read Access Token** (v4) from themoviedb.org → Settings → API. Without it, movie/TV search returns nothing (manual entry still works). |
+| `GOOGLE_PLACES_API_KEY`        | Google Places API (New) key. Without it, restaurant/place search returns nothing (manual entry still works).                                   |
 
 ### Deploying
 
@@ -52,6 +53,5 @@ in `.env.local` and run `bun run db:push`.
 
 ## Notes
 
-- No email infrastructure: sign-ups need no verification, but there is no
-  self-serve password reset — reset via the database if someone forgets.
 - Dark mode is the default; the header toggle stores an explicit choice.
+- Auth is handled by Clerk (email + password, with self-serve password reset).
