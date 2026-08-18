@@ -252,6 +252,7 @@ const META_FIELDS: Record<ItemType, Array<{ key: string; label: string }>> = {
   book: [
     { key: 'author', label: 'Author' },
     { key: 'year', label: 'Year' },
+    { key: 'genre', label: 'Genre' },
   ],
   place: [{ key: 'address', label: 'Address' }],
   wishlist: [{ key: 'price', label: 'Price' }],

@@ -96,7 +96,7 @@ export const searchTmdb = createServerFn({ method: 'GET' })
       const genres = (r.genre_ids ?? [])
         .map((id) => genreMap[id])
         .filter(Boolean)
-        .slice(0, 2)
+        .slice(0, 3)
       if (genres.length > 0) metadata.genre = genres.join(', ')
       // Kept so we can fetch streaming availability once the user picks this one.
       metadata.tmdbId = String(r.id)
@@ -255,6 +255,33 @@ interface OpenLibraryDoc {
   author_name?: Array<string>
   first_publish_year?: number
   cover_i?: number
+  subject?: Array<string>
+  first_sentence?: string | Array<string> | { value?: string }
+}
+
+const SKIP_BOOK_SUBJECTS =
+  /^(accessible book|protected daisy|in library|overdrive|nyt[:.]|large type|open library|internet archive)/i
+
+function bookBlurb(
+  value: OpenLibraryDoc['first_sentence'],
+): string | undefined {
+  const raw = Array.isArray(value)
+    ? value[0]
+    : typeof value === 'object' && value
+      ? value.value
+      : value
+  const text = raw?.trim()
+  if (!text) return undefined
+  return text.slice(0, 300)
+}
+
+function bookGenres(subjects: Array<string> | undefined): string | undefined {
+  if (!subjects?.length) return undefined
+  const picked = subjects
+    .map((s) => s.trim())
+    .filter((s) => s.length > 1 && s.length <= 32 && !SKIP_BOOK_SUBJECTS.test(s))
+    .slice(0, 3)
+  return picked.length > 0 ? picked.join(', ') : undefined
 }
 
 export const searchBooks = createServerFn({ method: 'GET' })
@@ -268,7 +295,7 @@ export const searchBooks = createServerFn({ method: 'GET' })
     url.searchParams.set('limit', '8')
     url.searchParams.set(
       'fields',
-      'key,title,author_name,first_publish_year,cover_i',
+      'key,title,author_name,first_publish_year,cover_i,subject,first_sentence',
     )
 
     const res = await fetch(url)
@@ -279,6 +306,10 @@ export const searchBooks = createServerFn({ method: 'GET' })
       const metadata: Record<string, string> = {}
       if (d.author_name?.length) metadata.author = d.author_name[0]
       if (d.first_publish_year) metadata.year = String(d.first_publish_year)
+      const genre = bookGenres(d.subject)
+      if (genre) metadata.genre = genre
+      const overview = bookBlurb(d.first_sentence)
+      if (overview) metadata.overview = overview
       return {
         title: d.title,
         imageUrl: d.cover_i

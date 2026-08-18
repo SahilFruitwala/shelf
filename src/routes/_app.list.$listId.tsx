@@ -588,13 +588,21 @@ function ListPage() {
     ? WHOLE_SHELF_PAGE_SIZE
     : PAGE_SIZE
 
+  // Typing a search on movies / series / books looks through both the
+  // watchlist and already-watched — people often don't remember which pile
+  // a title is in. The status dropdown still applies once the box is empty.
+  const isMediaShelf =
+    list?.type === 'movie' || list?.type === 'tv' || list?.type === 'book'
+  const effectiveStatus: StatusFilter =
+    query && isMediaShelf ? 'all' : filter
+
   const itemsQuery = useQuery({
     // Nested under ['list', listId] so existing invalidations still reach it.
     queryKey: [
       'list',
       listId,
       'items',
-      filter,
+      effectiveStatus,
       genreKey,
       query,
       serverSort,
@@ -605,7 +613,7 @@ function ListPage() {
       getListItems({
         data: {
           listId,
-          status: filter,
+          status: effectiveStatus,
           genres: genreKey,
           q: query || undefined,
           sort: serverSort,
@@ -1027,6 +1035,12 @@ function ListPage() {
                 Type one more character to search.
               </p>
             )}
+            {query && isMediaShelf && (
+              <p className="mt-1.5 text-[13px] text-ink-faint">
+                Looking in {toTryLabel.toLowerCase()} and{' '}
+                {doneLabel.toLowerCase()}.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px]">
@@ -1034,10 +1048,19 @@ function ListPage() {
               <ListFilter className="pointer-events-none absolute left-3 top-1/2 z-10 size-3.5 -translate-y-1/2 text-ink-faint" />
               <Select
                 compact
-                value={filter}
+                value={effectiveStatus}
                 onChange={(e) => setFilter(e.target.value as StatusFilter)}
+                disabled={Boolean(query && isMediaShelf)}
                 aria-label="Filter by status"
-                className={cn('pl-8', filter !== 'all' && 'border-ink-faint')}
+                title={
+                  query && isMediaShelf
+                    ? 'Search looks through every status'
+                    : undefined
+                }
+                className={cn(
+                  'pl-8',
+                  effectiveStatus !== 'all' && 'border-ink-faint',
+                )}
               >
                 {filters.map((f) => (
                   <option key={f.key} value={f.key}>
@@ -1256,8 +1279,13 @@ function ListPage() {
             Add the first one
           </Button>
         </div>
-      ) : itemsQuery.isPending ? (
+      ) : itemsQuery.isPending ||
+        (itemsQuery.isFetching && visible.length === 0) ? (
         <ItemGridSkeleton />
+      ) : itemsQuery.isError ? (
+        <p className="py-12 text-center text-[15px] text-danger">
+          Couldn&apos;t load this shelf. Refresh and try again.
+        </p>
       ) : visible.length === 0 ? (
         <p className="py-12 text-center text-[15px] text-ink-faint">
           {query

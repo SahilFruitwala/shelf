@@ -125,6 +125,7 @@ function SearchPicker({
                   <p className="truncate text-[13px] text-ink-faint">
                     {[
                       r.metadata.year,
+                      r.metadata.genre,
                       r.metadata.author,
                       r.metadata.address,
                       r.metadata.rating && `★ ${r.metadata.rating}`,
@@ -333,7 +334,7 @@ export function AddItemDialog({
     },
     onSuccess: async (result) => {
       // The mutation tells us everything needed to update the cheap summary
-      // caches. Avoid refetching shelf-wide counts, genres and cover queries.
+      // caches. Avoid refetching shelf-wide counts and genres.
       queryClient.setQueryData<ListDetail>(
         ['list', result.listId],
         (current) => {
@@ -362,10 +363,6 @@ export function AddItemDialog({
                 ...list,
                 itemCount: list.itemCount + 1,
                 toTryCount: list.toTryCount + 1,
-                coverImages:
-                  result.imageUrl && !list.coverImages.includes(result.imageUrl)
-                    ? [result.imageUrl, ...list.coverImages].slice(0, 4)
-                    : list.coverImages,
               }
             : list,
         ),
@@ -471,18 +468,49 @@ export function AddItemDialog({
       {/* Step 3 — confirm / edit */}
       {type && showForm && (
         <form onSubmit={handleSubmit} className="space-y-4">
-          {imageUrl && (
-            <img
-              src={imageUrl}
-              alt=""
-              className="h-28 w-auto rounded-lg border border-line object-cover"
-            />
-          )}
-          {metadata.address && (
-            <p className="flex items-center gap-1.5 text-[13px] text-ink-faint">
-              <MapPin className="size-3.5 shrink-0" />
-              {metadata.address}
-            </p>
+          {(imageUrl ||
+            metadata.address ||
+            metadata.year ||
+            metadata.genre ||
+            metadata.author ||
+            metadata.overview ||
+            metadata.description) && (
+            <div className="flex gap-3">
+              {imageUrl && (
+                <img
+                  src={imageUrl}
+                  alt=""
+                  className="h-28 w-20 shrink-0 rounded-lg border border-line object-cover"
+                />
+              )}
+              {(metadata.address ||
+                metadata.year ||
+                metadata.genre ||
+                metadata.author ||
+                metadata.overview ||
+                metadata.description) && (
+                <div className="min-w-0 space-y-1">
+                  {metadata.address && (
+                    <p className="flex items-center gap-1.5 text-[13px] text-ink-faint">
+                      <MapPin className="size-3.5 shrink-0" />
+                      {metadata.address}
+                    </p>
+                  )}
+                  {(metadata.year || metadata.genre || metadata.author) && (
+                    <p className="text-[13px] text-ink-faint">
+                      {[metadata.year, metadata.genre, metadata.author]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  )}
+                  {(metadata.overview || metadata.description) && (
+                    <p className="line-clamp-4 text-[14px] leading-relaxed text-ink-soft">
+                      {metadata.overview || metadata.description}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           <Field label="Title">
             <Input

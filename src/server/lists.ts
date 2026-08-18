@@ -47,8 +47,8 @@ export const getMyLists = createServerFn({ method: 'GET' }).handler(
       .where(inArray(lists.id, listIds))
       .orderBy(desc(lists.createdAt))
 
-    // Compute both item totals in one indexed pass. Two correlated count
-    // subqueries used to walk every shelf twice.
+    // Counts only — never item rows or image URLs. Home cards use a fixed
+    // icon; posters belong on the shelf page, not this summary.
     const itemCounts = await db
       .select({
         listId: items.listId,
@@ -60,40 +60,11 @@ export const getMyLists = createServerFn({ method: 'GET' }).handler(
       .groupBy(items.listId)
     const countsByList = new Map(itemCounts.map((r) => [r.listId, r]))
 
-    // Up to four recent item images per list for the cover strip. The ranking
-    // happens in SQL so this returns at most 4 rows per shelf — selecting every
-    // item the user owns just to keep the first few of each meant shipping
-    // thousands of rows over the wire to render a couple dozen thumbnails.
-    const covers = await db.all<{ list_id: string; image_url: string }>(sql`
-      select list_id, image_url from (
-        select
-          list_id,
-          image_url,
-          row_number() over (
-            partition by list_id order by created_at desc, id desc
-          ) as rn
-        from items
-        where list_id in (${sql.join(
-          listIds.map((id) => sql`${id}`),
-          sql`, `,
-        )}) and image_url is not null
-      )
-      where rn <= 4
-    `)
-
-    const coverMap = new Map<string, Array<string>>()
-    for (const c of covers) {
-      const arr = coverMap.get(c.list_id) ?? []
-      arr.push(c.image_url)
-      coverMap.set(c.list_id, arr)
-    }
-
     const result = rows.map((r) => ({
       ...r.list,
       memberCount: r.memberCount,
       itemCount: countsByList.get(r.list.id)?.itemCount ?? 0,
       toTryCount: countsByList.get(r.list.id)?.toTryCount ?? 0,
-      coverImages: coverMap.get(r.list.id) ?? [],
       isOwner: r.list.ownerId === me.id,
     }))
 

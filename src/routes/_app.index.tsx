@@ -5,15 +5,14 @@ import { Dumbbell, Plus, Search, Users, X } from 'lucide-react'
 
 import { LIST_TYPES } from '#/db/schema'
 import type { ListType } from '#/db/schema'
-import { CATEGORIES, LIST_TYPE_CONFIG } from '#/lib/categories'
+import { LIST_TYPE_CONFIG } from '#/lib/categories'
 import { isTripShelf } from '#/lib/list-types'
-import { cn, timeAgo } from '#/lib/utils'
+import { cn } from '#/lib/utils'
 import { useHotkey } from '#/lib/use-hotkey'
-import { getDustyItems, searchMyItems } from '#/server/items'
+import { searchMyItems } from '#/server/items'
 import { createList, getMyLists } from '#/server/lists'
 import { getMyWorkouts } from '#/server/workouts'
 import { formatDay } from '#/lib/workouts'
-import { ActivityFeed } from '#/components/activity-feed'
 import { AddItemDialog } from '#/components/add-item'
 import { HoverHighlight } from '#/components/aceternity'
 import { ItemCard } from '#/components/item-card'
@@ -37,32 +36,12 @@ export const Route = createFileRoute('/_app/')({
 
 type ListSummary = Awaited<ReturnType<typeof getMyLists>>[number]
 
-function CoverStrip({
-  images,
-  type,
-}: {
-  images: Array<string>
-  type: ListType
-}) {
+function ShelfCover({ type }: { type: ListType }) {
   const config = LIST_TYPE_CONFIG[type]
   const Icon = config.icon
   return (
-    <div className="flex h-24 items-center gap-2 overflow-hidden">
-      {images.length === 0 ? (
-        <div className="flex h-24 w-full items-center justify-center rounded-lg bg-card-deep/50">
-          <Icon className={cn('size-6 opacity-50', config.textClass)} />
-        </div>
-      ) : (
-        images.map((src, i) => (
-          <img
-            key={i}
-            src={src}
-            alt=""
-            loading="lazy"
-            className="h-24 w-16 rounded-lg object-cover"
-          />
-        ))
-      )}
+    <div className="flex h-24 items-center justify-center rounded-lg bg-card-deep/50">
+      <Icon className={cn('size-6 opacity-50', config.textClass)} />
     </div>
   )
 }
@@ -79,16 +58,7 @@ function ListCard({ list }: { list: ListSummary }) {
         trip && 'trip-card',
       )}
     >
-      {trip ? (
-        <div className="relative flex h-24 items-center justify-between overflow-hidden rounded-lg bg-card-deep/60 px-4">
-          <config.icon className={cn('size-8', config.textClass)} />
-          <span className="rounded-full border border-line bg-card/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-            Itinerary
-          </span>
-        </div>
-      ) : (
-        <CoverStrip images={list.coverImages} type={list.type} />
-      )}
+      <ShelfCover type={list.type} />
       <div className="mt-4">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="font-display text-lg font-semibold leading-snug">
@@ -350,56 +320,7 @@ function SearchResults({ query }: { query: string }) {
   )
 }
 
-function DustyShelf() {
-  const { data: dusty = [] } = useQuery({
-    queryKey: ['dusty'],
-    queryFn: () => getDustyItems(),
-  })
-
-  // No skeleton here on purpose: this section is usually empty, so a
-  // placeholder would promise content that never arrives.
-  if (dusty.length === 0) return null
-
-  return (
-    <section className="mt-12">
-      <SectionLabel className="mb-1">Gathering dust</SectionLabel>
-      <p className="mb-4 text-[14px] text-ink-soft">
-        Still waiting after all this time — try one, or admit it's not
-        happening.
-      </p>
-      <div className="glow-card rounded-(--radius-card) px-5 py-2">
-        {dusty.map((item) => {
-          const config = CATEGORIES[item.type]
-          const Icon = config.icon
-          return (
-            <div
-              key={item.id}
-              className="flex items-center gap-3 border-b border-line py-2.5 text-[14px] last:border-b-0"
-            >
-              <Icon className={cn('size-4 shrink-0', config.textClass)} />
-              <p className="min-w-0 flex-1 truncate text-ink-soft">
-                <span className="font-medium text-ink">{item.title}</span> on{' '}
-                <Link
-                  to="/list/$listId"
-                  params={{ listId: item.listId }}
-                  className="underline-offset-2 hover:text-ink hover:underline"
-                >
-                  {item.listName}
-                </Link>
-              </p>
-              <span className="shrink-0 text-[12px] text-ink-faint">
-                added {timeAgo(item.createdAt)}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
 function HomePage() {
-  const { user } = Route.useRouteContext()
   const { data: lists = [] } = useQuery({
     queryKey: ['lists'],
     queryFn: () => getMyLists(),
@@ -531,13 +452,6 @@ function HomePage() {
             </>
           )}
         </div>
-      )}
-
-      {!searching && (
-        <>
-          <DustyShelf />
-          <ActivityFeed myUserId={user.id} />
-        </>
       )}
 
       <NewListDialog open={creating} onClose={() => setCreating(false)} />

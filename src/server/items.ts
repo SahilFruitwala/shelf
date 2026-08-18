@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
 
 import { getDb } from './db-access'
 import {
@@ -203,9 +203,24 @@ export const getListItems = createServerFn({ method: 'GET' })
             ]
           : [sql`items.created_at desc`, sql`items.id desc`]
 
+    // Shelf cards don't need normalized_title (duplicate-check only). Selecting
+    // it would 500 the whole page if a database hasn't applied that migration.
     const pageQuery = (n: number) =>
       db
-        .select()
+        .select({
+          id: items.id,
+          listId: items.listId,
+          type: items.type,
+          title: items.title,
+          notes: items.notes,
+          link: items.link,
+          imageUrl: items.imageUrl,
+          status: items.status,
+          metadata: items.metadata,
+          addedBy: items.addedBy,
+          createdAt: items.createdAt,
+          completedAt: items.completedAt,
+        })
         .from(items)
         .where(filter)
         .orderBy(...orderBy)
@@ -233,7 +248,13 @@ export const getListItems = createServerFn({ method: 'GET' })
     const page = Math.min(requestedPage, totalPages)
     const rows = page === requestedPage ? requestedRows : await pageQuery(page)
 
-    return { items: rows, total, page, perPage, totalPages }
+    return {
+      items: rows.map((row) => ({ ...row, normalizedTitle: null })),
+      total,
+      page,
+      perPage,
+      totalPages,
+    }
   })
 
 export const updateItem = createServerFn({ method: 'POST' })
@@ -466,43 +487,6 @@ export const searchMyItems = createServerFn({ method: 'GET' })
 
     return rows.map((r) => ({ ...r.item, listName: r.listName }))
   })
-
-const DUSTY_AFTER_DAYS = 60
-
-/** Oldest still-untried items — the ones quietly gathering dust. */
-export const getDustyItems = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    const db = await getDb()
-    const me = await requireUser()
-
-    const memberships = await db
-      .select({ listId: listMembers.listId })
-      .from(listMembers)
-      .where(eq(listMembers.userId, me.id))
-    const listIds = memberships.map((m) => m.listId)
-    if (listIds.length === 0) return []
-
-    const cutoff = new Date(Date.now() - DUSTY_AFTER_DAYS * 86_400_000)
-    const rows = await db
-      .select({
-        item: items,
-        listName: lists.name,
-      })
-      .from(items)
-      .innerJoin(lists, eq(items.listId, lists.id))
-      .where(
-        and(
-          inArray(items.listId, listIds),
-          eq(items.status, 'to_try'),
-          lt(items.createdAt, cutoff),
-        ),
-      )
-      .orderBy(items.createdAt)
-      .limit(6)
-
-    return rows.map((r) => ({ ...r.item, listName: r.listName }))
-  },
-)
 
 export const deleteItem = createServerFn({ method: 'POST' })
   .validator((itemId: string) => itemId)

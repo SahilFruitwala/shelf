@@ -37,10 +37,16 @@ function eventPhrase(
   }
 }
 
-export function ActivityFeed({ myUserId }: { myUserId?: string }) {
+export function ActivityFeed({
+  listId,
+  myUserId,
+}: {
+  listId: string
+  myUserId?: string
+}) {
   const { data: events = [] } = useQuery({
-    queryKey: ['activity'],
-    queryFn: () => getRecentActivity(),
+    queryKey: ['activity', listId],
+    queryFn: () => getRecentActivity({ data: listId }),
   })
 
   // No skeleton here on purpose: an empty feed renders nothing, so a

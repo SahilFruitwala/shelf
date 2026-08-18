@@ -1,42 +1,20 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 
 import { getDb } from './db-access'
-import { activity, listMembers, lists, user } from '#/db/schema'
-import { requireUser } from './helpers'
+import { activity, lists, user } from '#/db/schema'
+import { requireMembership, requireUser } from './helpers'
 
 /**
- * Recent events on the user's shared shelves (more than one member) — a feed
- * only makes sense where someone else can see it.
+ * Recent events on one shelf. Requires a list id — there is no global feed
+ * query, so the home screen cannot dump activity across every shared shelf.
  */
-export const getRecentActivity = createServerFn({ method: 'GET' }).handler(
-  async () => {
+export const getRecentActivity = createServerFn({ method: 'GET' })
+  .validator((listId: string) => listId)
+  .handler(async ({ data: listId }) => {
     const db = await getDb()
     const me = await requireUser()
-
-    const memberships = await db
-      .select({ listId: listMembers.listId })
-      .from(listMembers)
-      .where(eq(listMembers.userId, me.id))
-    const listIds = memberships.map((m) => m.listId)
-    if (listIds.length === 0) return []
-
-    const shared = await db
-      .select({ id: lists.id })
-      .from(lists)
-      .where(
-        and(
-          inArray(lists.id, listIds),
-          gt(
-            // Qualified names written out: interpolating lists.id renders an
-            // unqualified "id" that resolves to the inner table's scope.
-            sql<number>`(select count(*) from list_members where list_members.list_id = lists.id)`,
-            1,
-          ),
-        ),
-      )
-    const sharedIds = shared.map((s) => s.id)
-    if (sharedIds.length === 0) return []
+    await requireMembership(listId, me.id)
 
     return db
       .select({
@@ -53,8 +31,7 @@ export const getRecentActivity = createServerFn({ method: 'GET' }).handler(
       .from(activity)
       .innerJoin(user, eq(activity.userId, user.id))
       .innerJoin(lists, eq(activity.listId, lists.id))
-      .where(inArray(activity.listId, sharedIds))
+      .where(eq(activity.listId, listId))
       .orderBy(desc(activity.createdAt))
       .limit(15)
-  },
-)
+  })
