@@ -39,6 +39,7 @@ bun run dev               # http://localhost:3000
 | `CLERK_SECRET_KEY`             | Clerk secret key from the Clerk dashboard                                                                                                      |
 | `CLERK_PUBLISHABLE_KEY`        | Clerk publishable key; ships in the client bundle                                                                                              |
 | `CLERK_WEBHOOK_SIGNING_SECRET` | Signing secret for Clerk webhooks (user creation/deletion sync)                                                                                |
+| `CLERK_FRONTEND_API`           | Optional. Custom Clerk Frontend API origin (e.g. `https://clerk.example.com`) added to CSP. Dev instances on `*.clerk.accounts.dev` are already allowed. |
 | `TMDB_API_TOKEN`               | TMDb **API Read Access Token** (v4) from themoviedb.org → Settings → API. Without it, movie/TV search returns nothing (manual entry still works). |
 | `GOOGLE_PLACES_API_KEY`        | Google Places API (New) key. Without it, restaurant/place search returns nothing (manual entry still works).                                   |
 
